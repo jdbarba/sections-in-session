@@ -1,0 +1,1940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sections* in Session by Time — Amherst College Schedule Analytics</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- SheetJS (xlsx) for Excel & CSV Parsing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              200: '#c7d2fe',
+              300: '#a5b4fc',
+              400: '#818cf8',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+              800: '#3730a3',
+              900: '#312e81',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+    .report-cell {
+      transition: background-color 0.15s ease, transform 0.1s ease, box-shadow 0.12s ease;
+    }
+    .report-cell:hover {
+      box-shadow: inset 0 0 0 2px #4f46e5;
+    }
+    .bar-fill {
+      transition: height 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.15s ease;
+    }
+
+    /* Dedicated Print Stylesheet matching "Sections in Session by Time - Fall 2026.pdf" */
+    @media print {
+      @page {
+        size: letter portrait;
+        margin: 0.5in 0.6in;
+      }
+      body {
+        background: #ffffff !important;
+        color: #000000 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .no-print {
+        display: none !important;
+      }
+      #print-area {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+      }
+      #report-card {
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        border-radius: 0 !important;
+      }
+      .report-table th,
+      .report-table td {
+        padding-top: 4px !important;
+        padding-bottom: 4px !important;
+        font-size: 11px !important;
+        border-color: #cbd5e1 !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-900 font-sans antialiased selection:bg-brand-100 selection:text-brand-900">
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="no-print fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- Top Institutional Toolbar (Hidden on Print) -->
+  <header class="no-print bg-white border-b border-slate-200 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex flex-wrap items-center justify-between py-3 gap-3">
+        <!-- Title & View Switcher -->
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-xs">
+              <i data-lucide="table-properties" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h1 class="text-sm font-bold tracking-tight text-slate-900">Academic Schedule Occupancy</h1>
+              <p class="text-[11px] text-slate-500">Amherst College Registrar &amp; Division Analytics</p>
+            </div>
+          </div>
+
+          <div class="h-6 w-px bg-slate-200 hidden md:block"></div>
+
+          <!-- View Switcher Tabs -->
+          <nav class="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200/70" role="tablist">
+            <button id="tab-report" onclick="switchView('report')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-900 shadow-xs transition">
+              <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 text-brand-600"></i>
+              <span>Report &amp; Heatmap Matrix</span>
+            </button>
+            <button id="tab-trends" onclick="switchView('trends')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 transition">
+              <i data-lucide="bar-chart-3" class="w-3.5 h-3.5"></i>
+              <span>Interactive Chart &amp; Trends</span>
+            </button>
+            <button id="tab-directory" onclick="switchView('directory')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 transition">
+              <i data-lucide="list" class="w-3.5 h-3.5"></i>
+              <span>Section Directory</span>
+            </button>
+          </nav>
+        </div>
+
+        <!-- File Upload & Export Actions -->
+        <div class="flex flex-wrap items-center gap-2">
+          <label class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800 cursor-pointer transition shadow-xs">
+            <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+            <span>Upload Excel / CSV</span>
+            <input id="file-upload-input" type="file" accept=".xlsx,.xls,.csv" onchange="handleSpreadsheetUpload(event)" class="hidden">
+          </label>
+
+          <button id="btn-reset-dataset" onclick="restoreFall2026Dataset()" class="hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+            <span>Restore Fall 2026</span>
+          </button>
+
+          <button onclick="exportReportCsv()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 transition">
+            <i data-lucide="download" class="w-3.5 h-3.5 text-slate-500"></i>
+            <span>Export CSV Report</span>
+          </button>
+
+          <button onclick="window.print()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800 transition shadow-xs">
+            <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+            <span>Print / Save as PDF</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Filter Strip Row 1: Academic Division, Subject, Enrollment Size, Location & Course Level -->
+      <div class="py-2.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <!-- Academic Division Selector -->
+          <div class="flex items-center gap-1.5">
+            <label for="filter-division" class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Division:</label>
+            <select id="filter-division" onchange="handleDivisionChange()" class="px-2.5 py-1.5 text-xs font-semibold bg-indigo-50/70 border border-indigo-200/80 rounded-xl text-indigo-950 focus:outline-none focus:ring-2 focus:ring-brand-500">
+              <option value="ALL">All Divisions (564)</option>
+            </select>
+          </div>
+
+          <!-- Cross-List Match Mode Toggle (Primary Dept vs Any Cross-List) -->
+          <div class="inline-flex rounded-xl bg-slate-100 p-0.5 border border-slate-200/70" title="Choose whether cross-listed courses match by their primary subject code/level or any listed subject/level">
+            <button id="btn-match-primary" onclick="setMatchMode('primary')" class="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white text-slate-900 shadow-2xs transition">
+              Primary Dept
+            </button>
+            <button id="btn-match-any" onclick="setMatchMode('any')" class="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition">
+              Any Cross-List
+            </button>
+          </div>
+
+          <!-- Subject / Dept Dropdown (Cascades from Division) -->
+          <select id="filter-dept" onchange="handleFilterChange()" class="px-2.5 py-1.5 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500">
+            <option value="ALL">All Subjects</option>
+          </select>
+
+          <!-- Enrollment Size Dropdown (Increments of 10) -->
+          <select id="filter-size" onchange="handleFilterChange()" class="px-2.5 py-1.5 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500" title="Filter sections by enrollment size in increments of 10">
+            <option value="ALL">All Enrollment Sizes</option>
+          </select>
+
+          <!-- Location / Building -->
+          <select id="filter-loc" onchange="handleFilterChange()" class="max-w-[190px] px-2.5 py-1.5 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500">
+            <option value="ALL">All Locations</option>
+          </select>
+
+          <!-- Multi-Select Course Level Filter (100, 200, 300, 400) -->
+          <div class="flex flex-wrap items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1" role="group" aria-label="Course Level Multi-Select">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mr-0.5">Course Level:</span>
+            <div id="course-level-pills" class="flex flex-wrap items-center gap-1">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Instructional Format Filter Pills -->
+        <div class="flex flex-wrap items-center gap-1.5" id="format-pills">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+      <!-- Filter Strip Row 2: Display Window & Report Options -->
+      <div class="py-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <!-- Time Window Toggle -->
+          <div class="inline-flex rounded-xl bg-slate-100 p-0.5 border border-slate-200/70">
+            <button id="btn-window-standard" onclick="setTimeWindow('standard')" class="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white text-slate-900 shadow-2xs transition">
+              Standard (8:00 AM – 5:00 PM)
+            </button>
+            <button id="btn-window-fullday" onclick="setTimeWindow('fullday')" class="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition">
+              Full Day (8:00 AM – 10:00 PM)
+            </button>
+          </div>
+
+          <!-- Include Sunday Checkbox -->
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer select-none">
+            <input id="toggle-sunday" type="checkbox" onchange="toggleSunday()" class="w-3.5 h-3.5 rounded text-brand-600 border-slate-300 focus:ring-brand-500">
+            <span class="text-[11px] font-medium text-slate-700">Include Sunday</span>
+          </label>
+
+          <!-- Heatmap Shading Toggle -->
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer select-none">
+            <input id="toggle-shading" type="checkbox" checked onchange="toggleHeatmapShading()" class="w-3.5 h-3.5 rounded text-brand-600 border-slate-300 focus:ring-brand-500">
+            <span class="text-[11px] font-medium text-slate-700">Heatmap Tint</span>
+          </label>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <span id="division-subjects-hint" class="text-[11px] text-slate-500 hidden sm:inline"></span>
+          <button id="btn-clear-filters" onclick="resetAllFilters()" class="hidden px-2.5 py-1 text-[11px] font-semibold text-brand-600 bg-brand-50 hover:bg-brand-100 rounded-xl transition">
+            Reset All Filters
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main id="print-area" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <!-- VIEW 1: REPORT & HEATMAP MATRIX + SLOT INSPECTOR -->
+    <div id="view-report" class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+      <!-- Left: Crisp White Institutional Report Card (8 cols) -->
+      <div class="lg:col-span-8 space-y-5">
+        <article id="report-card" class="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-6 sm:p-8">
+          <!-- Institutional Report Header (Matches PDF Layout) -->
+          <div class="flex flex-wrap items-baseline justify-between gap-2 pb-4 border-b-2 border-slate-900">
+            <div>
+              <h2 class="text-2xl sm:text-[26px] font-bold tracking-tight text-slate-900 leading-tight">
+                Sections<sup class="text-base font-semibold text-slate-600 ml-0.5">*</sup> in Session by Time
+              </h2>
+              <p id="report-subtitle" class="text-sm font-medium text-slate-600 mt-1">
+                Fall 2026 schedule · <span class="font-semibold text-slate-900">564 sections</span>
+              </p>
+            </div>
+
+            <!-- Interactive Legend (Hidden on Print) -->
+            <div id="heatmap-legend" class="no-print flex items-center gap-1.5 text-[11px] text-slate-500 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200/80">
+              <span>Low</span>
+              <span class="w-3.5 h-3.5 rounded-xs bg-indigo-50 border border-indigo-100 inline-block"></span>
+              <span class="w-3.5 h-3.5 rounded-xs bg-indigo-100 inline-block"></span>
+              <span class="w-3.5 h-3.5 rounded-xs bg-indigo-200 inline-block"></span>
+              <span class="w-3.5 h-3.5 rounded-xs bg-indigo-400 inline-block"></span>
+              <span class="w-3.5 h-3.5 rounded-xs bg-indigo-600 inline-block"></span>
+              <span id="legend-peak-text" class="font-mono font-semibold text-slate-700 ml-0.5">Peak</span>
+            </div>
+          </div>
+
+          <!-- Half-Hour Matrix Table -->
+          <div class="mt-4 overflow-x-auto">
+            <table class="report-table w-full border-collapse text-sm">
+              <thead>
+                <tr id="report-table-head" class="border-b-2 border-slate-800 text-slate-900">
+                  <!-- Populated dynamically -->
+                </tr>
+              </thead>
+              <tbody id="report-table-body" class="divide-y divide-slate-200/80 font-mono tabular-nums">
+                <!-- Populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Footnote matching attached PDF -->
+          <div class="mt-4 pt-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+            <p>* Includes all scheduled academic meetings, including labs, studios, and discussions</p>
+            <p id="report-peak-summary" class="no-print font-mono text-[11px] text-slate-500"></p>
+          </div>
+        </article>
+
+        <!-- Embedded Quick Daily Occupancy Curve Card below Report (Hidden on Print) -->
+        <section class="no-print bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div>
+              <h3 class="text-sm font-bold text-slate-900">Half-Hour Occupancy Curve</h3>
+              <p class="text-xs text-slate-500">Click any bar to inspect active sections for that half-hour block</p>
+            </div>
+            <div class="inline-flex rounded-xl bg-slate-100 p-0.5 border border-slate-200/70" id="mini-chart-day-selector">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+          <div id="mini-curve-chart" class="h-44 flex flex-col justify-end pt-4 select-none">
+            <!-- Populated dynamically -->
+          </div>
+        </section>
+      </div>
+
+      <!-- Right: Interactive Slot Inspector Panel (4 cols, Hidden on Print) -->
+      <aside class="no-print lg:col-span-4 lg:sticky lg:top-36">
+        <div class="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
+          <!-- Inspector Header -->
+          <div class="p-4 bg-slate-900 text-white">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <h3 id="inspector-heading" class="text-sm font-bold tracking-tight">Wednesday · 1:30 PM</h3>
+              </div>
+              <span id="inspector-section-count" class="px-2.5 py-0.5 rounded-full bg-white/15 text-white font-mono text-xs font-semibold tabular-nums">
+                65 sections
+              </span>
+            </div>
+            <div class="mt-1.5 flex items-center justify-between text-xs text-slate-300">
+              <span id="inspector-window-label">Window: 1:30 PM – 2:00 PM</span>
+              <span id="inspector-enrollment-sum" class="font-mono text-emerald-300">0 enrolled</span>
+            </div>
+
+            <!-- Inspector Search Filter -->
+            <div class="mt-3 relative">
+              <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+              <input id="inspector-search" type="text" oninput="renderSlotInspector()" placeholder="Filter active sections in this slot..." class="w-full pl-8 pr-3 py-1.5 text-xs bg-white/10 border border-white/15 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-400">
+            </div>
+          </div>
+
+          <!-- Active Sections List -->
+          <div id="inspector-sections-list" class="divide-y divide-slate-100 max-h-[620px] overflow-y-auto p-4">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- VIEW 2: INTERACTIVE CHART & TRENDS -->
+    <div id="view-trends" class="no-print hidden space-y-6">
+      <!-- KPI Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+          <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Peak Concurrent Load</p>
+          <p id="trend-kpi-peak" class="text-2xl font-bold text-slate-900 font-mono tabular-nums mt-1">0</p>
+          <p id="trend-kpi-peak-sub" class="text-xs text-slate-500 mt-1">—</p>
+        </div>
+        <div class="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+          <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Active Sections</p>
+          <p id="trend-kpi-sections" class="text-2xl font-bold text-slate-900 font-mono tabular-nums mt-1">0</p>
+          <p id="trend-kpi-enrollment" class="text-xs text-slate-500 mt-1">0 total student seats</p>
+        </div>
+        <div class="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+          <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Peak Day of Week</p>
+          <p id="trend-kpi-day" class="text-2xl font-bold text-slate-900 mt-1">—</p>
+          <p id="trend-kpi-day-sub" class="text-xs text-slate-500 mt-1">—</p>
+        </div>
+        <div class="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+          <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Mean Sections / 30-Min</p>
+          <p id="trend-kpi-mean" class="text-2xl font-bold text-slate-900 font-mono tabular-nums mt-1">0.0</p>
+          <p class="text-xs text-slate-500 mt-1">Across active report window</p>
+        </div>
+      </div>
+
+      <!-- Multi-Day Overlay SVG Line Chart + Grouped Comparison -->
+      <div class="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-6">
+        <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">Multi-Day Half-Hour Occupancy Comparison (Mon – Fri)</h2>
+            <p class="text-xs text-slate-500">Overlay of simultaneous sections in session across each weekday</p>
+          </div>
+          <!-- Day Legend Toggles -->
+          <div class="flex flex-wrap items-center gap-3 text-xs font-semibold" id="line-chart-legend">
+            <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-indigo-600 inline-block"></span>Monday</span>
+            <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-emerald-600 inline-block"></span>Tuesday</span>
+            <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-amber-500 inline-block"></span>Wednesday</span>
+            <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-rose-600 inline-block"></span>Thursday</span>
+            <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-sky-500 inline-block"></span>Friday</span>
+          </div>
+        </div>
+
+        <div id="multi-day-svg-container" class="w-full overflow-x-auto">
+          <!-- Populated dynamically with crisp responsive SVG chart -->
+        </div>
+      </div>
+
+      <!-- Division, Enrollment Size, Course Level, Format, and Top Subjects Breakdowns -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-6">
+          <h3 class="text-sm font-bold text-slate-900 mb-1">Sections by Academic Division</h3>
+          <p class="text-xs text-slate-500 mb-4">Amherst College Honors Policy division groupings</p>
+          <div id="division-breakdown-container" class="space-y-3.5">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-6">
+          <div class="flex items-center justify-between gap-2 mb-1">
+            <h3 class="text-sm font-bold text-slate-900">Sections by Enrollment Size</h3>
+            <span class="text-[11px] text-slate-400">Click bar to filter report</span>
+          </div>
+          <p class="text-xs text-slate-500 mb-4">Distribution in increments of 10 enrolled students</p>
+          <div id="size-breakdown-container" class="space-y-3">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-6">
+          <div class="flex items-center justify-between gap-2 mb-1">
+            <h3 class="text-sm font-bold text-slate-900">Sections by Course Level</h3>
+            <span class="text-[11px] text-slate-400">Click bar to toggle level</span>
+          </div>
+          <p class="text-xs text-slate-500 mb-4">Distribution across 100, 200, 300, and 400 level courses</p>
+          <div id="level-breakdown-container" class="space-y-3.5">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-6">
+          <h3 class="text-sm font-bold text-slate-900 mb-1">Instructional Format Distribution</h3>
+          <p class="text-xs text-slate-500 mb-4">Breakdown of scheduled sections and seat load by meeting type</p>
+          <div id="format-breakdown-container" class="space-y-4">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-6 lg:col-span-2">
+          <h3 class="text-sm font-bold text-slate-900 mb-1">Top 10 Subjects by Half-Hour Blocks</h3>
+          <p class="text-xs text-slate-500 mb-4">Subjects generating the highest classroom time footprint</p>
+          <div id="dept-breakdown-container" class="space-y-2.5">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 3: SEARCHABLE & SORTABLE SECTION DIRECTORY -->
+    <div id="view-directory" class="no-print hidden bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
+      <div class="p-4 sm:p-5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 class="text-base font-bold text-slate-900">Complete Course Section Directory</h2>
+          <p id="directory-subtitle" class="text-xs text-slate-500">Showing 564 scheduled sections</p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="relative min-w-[240px]">
+            <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+            <input id="directory-search" type="text" oninput="renderDirectoryTable()" placeholder="Search code, division, title, instructor..." class="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white">
+          </div>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500 select-none">
+              <th onclick="sortDirectory('code')" class="py-3 px-4 cursor-pointer hover:text-slate-900">Section <span id="sort-ind-code"></span></th>
+              <th onclick="sortDirectory('division')" class="py-3 px-4 cursor-pointer hover:text-slate-900">Division <span id="sort-ind-division"></span></th>
+              <th onclick="sortDirectory('title')" class="py-3 px-4 cursor-pointer hover:text-slate-900">Course Title <span id="sort-ind-title"></span></th>
+              <th onclick="sortDirectory('format')" class="py-3 px-4 cursor-pointer hover:text-slate-900">Format <span id="sort-ind-format"></span></th>
+              <th onclick="sortDirectory('daysStr')" class="py-3 px-4 cursor-pointer hover:text-slate-900">Days <span id="sort-ind-daysStr"></span></th>
+              <th onclick="sortDirectory('startMin')" class="py-3 px-4 cursor-pointer hover:text-slate-900">Time <span id="sort-ind-startMin"></span></th>
+              <th onclick="sortDirectory('location')" class="py-3 px-4 cursor-pointer hover:text-slate-900">Location <span id="sort-ind-location"></span></th>
+              <th onclick="sortDirectory('instructor')" class="py-3 px-4 cursor-pointer hover:text-slate-900">Instructor <span id="sort-ind-instructor"></span></th>
+              <th onclick="sortDirectory('enrollment')" class="py-3 px-4 text-right cursor-pointer hover:text-slate-900">Enrl <span id="sort-ind-enrollment"></span></th>
+            </tr>
+          </thead>
+          <tbody id="directory-tbody" class="divide-y divide-slate-100 text-xs">
+            <!-- Populated dynamically -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    /**
+     * =========================================================================
+     * AMHERST COLLEGE SUBJECT-TO-DIVISION MAPPING
+     * Source: https://www.amherst.edu/academiclife/registrar/for-students/honors-policy
+     * =========================================================================
+     */
+    const DIVISION_SUBJECTS = {
+      'Arts': ['ARCH', 'ARHA', 'MUSI', 'MUSL', 'THDA'],
+      'Humanities': [
+        'AAPI', 'AMST', 'ARAB', 'ASLC', 'BLST', 'CHIN', 'CLAS', 'EDST',
+        'ENGL', 'ENST', 'EUST', 'FAMS', 'FREN', 'GERM', 'GREE', 'HIST',
+        'JAPA', 'LATI', 'LJST', 'LLAS', 'PHIL', 'RELI', 'RUSS', 'SPAN', 'SWAG'
+      ],
+      'Sciences and Mathematics': [
+        'ASTR', 'BCBP', 'BIOL', 'CHEM', 'COSC', 'GEOL', 'MATH', 'NEUR', 'PHYS', 'STAT'
+      ],
+      'Social and Behavioral Sciences': ['ANTH', 'ECON', 'POSC', 'PSYC', 'SOCI'],
+      'Non-Divisional': ['COLQ', 'FYSE', 'INTE']
+    };
+
+    const DIVISION_ORDER = [
+      'Arts',
+      'Humanities',
+      'Sciences and Mathematics',
+      'Social and Behavioral Sciences',
+      'Non-Divisional'
+    ];
+
+    const SUBJECT_TO_DIVISION = {};
+    Object.entries(DIVISION_SUBJECTS).forEach(([divName, subjects]) => {
+      subjects.forEach(subj => {
+        SUBJECT_TO_DIVISION[subj] = divName;
+      });
+    });
+
+    function getDivisionForSubject(subj) {
+      return SUBJECT_TO_DIVISION[String(subj || '').toUpperCase()] || 'Non-Divisional';
+    }
+
+    const DIVISION_BADGE_STYLES = {
+      'Arts': 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200',
+      'Humanities': 'bg-sky-50 text-sky-700 border-sky-200',
+      'Sciences and Mathematics': 'bg-teal-50 text-teal-700 border-teal-200',
+      'Social and Behavioral Sciences': 'bg-violet-50 text-violet-700 border-violet-200',
+      'Non-Divisional': 'bg-slate-100 text-slate-700 border-slate-200'
+    };
+
+    const DIVISION_BAR_COLORS = {
+      'Arts': 'bg-fuchsia-600',
+      'Humanities': 'bg-sky-600',
+      'Sciences and Mathematics': 'bg-teal-600',
+      'Social and Behavioral Sciences': 'bg-violet-600',
+      'Non-Divisional': 'bg-slate-600'
+    };
+
+    /**
+     * =========================================================================
+     * EMBEDDED FALL 2026 DATASET (ALL 564 SCHEDULED SECTIONS)
+     * =========================================================================
+     */
+    const FALL_2026_DATA = {"period":"Fall 2026","depts":["AAPI","AMST","ANTH","ARCH","ARHA","ASLC","ASTR","BCBP","BIOL","BLST","CHEM","CHIN","CLAS","COLQ","COSC","ECON","EDST","ENGL","ENST","EUST","FAMS","FREN","FYSE","GEOL","GERM","GREE","HIST","LATI","LJST","LLAS","MATH","MUSI","NEUR","PHIL","PHYS","POSC","PSYC","RELI","RUSS","SOCI","SPAN","STAT","SWAG","THDA"],"formats":["Discussion","Laboratory","Lecture"],"locations":["","Arms Music Center Room 007","Arms Music Center Room 102","Arms Music Center Room 212","Barrett Hall Room 102","Barrett Hall Room 105","Beneski Museum of Natural History Room 100","Beneski Museum of Natural History Room 107","Beneski Museum of Natural History Room 203","Beneski Museum of Natural History Room 211","Beneski Museum of Natural History Room 303","Beneski Museum of Natural History Room 311","Chapin Hall Room 011","Chapin Hall Room 101","Chapin Hall Room 103","Chapin Hall Room 119","Chapin Hall Room 201","Chapin Hall Room 203","Chapin Hall Room 203 Keefe Campus Center Room 008","Chapin Hall Room 204","Chapin Hall Room 205","Chapin Hall Room 210","Clark House Room 100","Converse Hall Room 207","Converse Hall Room 209","Converse Hall Room 308","Cooper House Room 101","Cooper House Room 201","Fayerweather Hall Room 001","Fayerweather Hall Room 006","Fayerweather Hall Room 015","Fayerweather Hall Room 101","Fayerweather Hall Room 113","Fayerweather Hall Room 113 Keefe Campus Center Room 008","Fayerweather Hall Room 115","Fayerweather Hall Room 115 Johnson Chapel Room 202","Fayerweather Hall Room 117","Fayerweather Hall Room 117 Keefe Campus Center Room 008","Fayerweather Hall Room 201","Fayerweather Hall Room 205","Fayerweather Hall Room 207","Fayerweather Hall Room 215","Fayerweather Hall Room 217","Fayerweather Hall Room 303","Ford Residence Hall Room 102","Ford Residence Hall Room 109","Ford Residence Hall Room 120","Frost Library Room 211","Grosvenor House Room 012","Johnson Chapel Room 202","Lyceum Room 102","Lyceum Room 201","Lyceum Room 202","Lyceum Room 325","Lyceum Room 329","Morgan Hall Room 110","Newport Residence Hall Room 102","Octagon Room 200","Science Center Room A001","Science Center Room A011","Science Center Room A013","Science Center Room A019","Science Center Room A101","Science Center Room A111","Science Center Room A117","Science Center Room A126","Science Center Room A131","Science Center Room A231","Science Center Room A301","Science Center Room A331","Science Center Room A333","Science Center Room B113","Science Center Room B115","Science Center Room B117","Science Center Room B119","Science Center Room B137","Science Center Room B227","Science Center Room B237","Science Center Room B327","Science Center Room C001","Science Center Room C101","Science Center Room C107","Science Center Room D103","Science Center Room D303","Science Center Room E108","Science Center Room E108 Science Center Room E110","Science Center Room E110","Science Center Room E110 Science Center Room E212","Science Center Room E208","Science Center Room E210","Science Center Room E212","Seeley Mudd Room 006","Seeley Mudd Room 014","Seeley Mudd Room 014 Seeley Mudd Room 206","Seeley Mudd Room 204","Seeley Mudd Room 205","Seeley Mudd Room 206","Seeley Mudd Room 207","Stirn Lecture Hall Room 100","Webster Hall Room 102","Webster Hall Room 117","Webster Hall Room 122","Webster Hall Room 215","Webster Hall Room 217","Webster Hall Room 219","Webster Hall Room 220","Webster Hall Room G008","Webster Hall Room G019"],"instructors":["","Aamir Rasheed","Abby Flanagan","Adam Honig","Adam Levine","Adam Sitze","Adi Gordon","Ahmad Khalidi\n\nNatasha Gill","Alejandro Cuellar","Alex Moskowitz","Alexander George","Alexander Mikhailovich Semyonov","Alexandra Purdy\n\nChristina Bowers\n\nJosiah Boivin","Alicia Christoff\n\nGeorge Abraham","Amber Sweat","Amelia Worsley","Amelia Worsley\n\nIngrid Nelson","Amelie Hastie","Amrita Basu","Amy Coddington","Amy Demorest","Amy Wagaman","Andreas Georgiou","Andrew Dole","Andrew Wu","Andrew Wu\n\nKristy Gardner","Angelica Monteiro","Angus McLeod","Anna Jones Abramson","Anna Martini","Anna Schrade","Anston Bosman","Anthony Bishop\n\nMona Wu Orr\n\nTommy Tashjian","Armando Chaguaceda Noriega","Ashley Carter","Ashwin Ravikumar","Austin Sarat","Bahar Modir","Betsey Garand","Brett Donohoe","Brian Baisa\n\nDaniel Barbezat","Brian House","Brittney Bailey","Bruce Diehl","Carmen Granda","Carol Bailey","Carrie Palmquist","Catherine Ciepiela","Catherine Epstein","Catherine McNally","Catherine Sanderson","Cheikh Thiam","Christina Bowers","Christine Peralta","Christopher Dole","Christopher Durr\n\nRayane Moreira","Christopher Kingston","Cole Dovey","Constantine Pleshakov","Daniel Barbezat","Daniel Enstedt","Daniel Guzman","Daniel Schrade","Daniela Narvaez Burbano","Daniella Bardalez Gagliuffi","Danielle Benedetto","Darryl Harper","David Hall","David Hansen\n\nKendra Marcus","David Jones","David Jones\n\nVictor Guevara","David Zureick-Brown","Dennis James Sweeney","Douglas Culhane","Duc Nguyen","Dwight Carey","Edward Melillo","Edward Melillo\n\nJoseph Moore","Eleonora Mattiacci","Eleonora Mattiacci\n\nKerry Ratigan","Elizabeth Herbin-Triant","Elizabeth Herbin-Triant\n\nLisa Brooks","Elizabeth Kneeland","Ellen Boucher","Eric Sawyer","Ethan Clotfelter","Ethan Temeles","Ethan Temeles\n\nJill Miller","Ethan Temeles\n\nJill Miller\n\nThea Kristensen","Fanhui Xu\n\nRyan Alvarado","Francis Couvares","Frederick Griffiths","Gabriel Arboleda","Galina Melman","Genesis Baez","Geoffrey Sanborn","George Abraham","George Qiao","Gregory Call","Hannah Hunter-Parker","Hans Hansen","Harris Daniels","Heidi Gilpin","Helen Leung\n\nKenneth Rotondi","Helen Leung\n\nKenneth Rotondi\n\nMark Marshall\n\nRichmond Ampiah-Bonney","Hilary Moss","Ingrid Nelson","Isaac Rosenthal","Isabel Ortiz","Ivan Contreras","JaMario Stills","Jacob Olshansky","Jaeyoon Park","Jagu Jagannathan","Jagu Jagannathan\n\nJoseph Moore","Jake Blackwood","Jallicia Jolly","Jallicia Jolly\n\nJared Loggins","Jared Loggins","Jarrett Moyer\n\nJonathan Friedman","Jarrett Moyer\n\nSean Foster","Jason Robinson","Javier Corrales","Jeffers Engelhardt","Jen Manion","Jenna Riegel","Jenna Zomback","Jessica Reyes","Jessica Sidman","John Rager","John Roche","John-Paul Baird","Jonas Rosenbrueck","Jonathan Friedman","Jonathan Obert","Josef Trapani","Joseph Hiller","Joseph Palmer","Joshua Guilford","Judd Greenstein","Judith Frank","Judith Frank\n\nThirii Myint","Julia McQuade","Jun Ishii","Junghyun Lee","Junko Oba","Jutta Sperling","Jyl Gentzler","Kaitlyn Webb","Karen Koehler","Kate Follette","Kate Martel","Katharine Correia","Katharine Sims","Katherine Fein","Katherine Moore","Kathryn Reynolds","Kaća Bradonjić","Kendra Marcus\n\nRen Wiscons","Khary Polk","Kirun Kapur","Klara Moricz","Kristen Luschen","Kristin Bumiller","Kristy Gardner","Krupa Shandilya","Larry Hunter","Laura Rojas","Laure Katsaros","Lauren Reutenauer\n\nRayane Moreira\n\nRen Wiscons","Lauren Reutenauer\n\nRen Wiscons","Lawrence Douglas","Lee Spector","Lili Kim","Lisa Brooks","Liudmila Listrovaya","Lorne Falk","Lucia Monge","Ludmila Ferrari","Madeleine Levac","Manuel Zenquis","Manuela Picq","Marc Edwards","Marcus Dominick","Maria Heim","Mark Dayie","Mark Marshall\n\nRichmond Ampiah-Bonney","Matthew Ghazarian","Matthew Schulkind","Max Kaisler","Mekhola Gomes","Mengqi Wang","Mesay Melese Gebresilasse","Michael Ching","Michael Cohen","Michael Elliott","Michael Hood","Michael Kunichika","Michelle Fame","Michelle Lee","Miriam Kuzbary","Mona Wu Orr\n\nTommy Tashjian","Monica Ringer","Monika Brodnicka","Monika Brodnicka\n\nTariq Jaffer","Myroslav Kryven","Natasha Staller","Nathan McClain","Nathan Pflueger","Nathaniel Shils","Neil White","Neri Torres","Nica Siegel","Nicholas Holschuh","Niek Janssen","Niko Vicario","Nishiten Shah","Noah Romero","Nusrat Chowdhury","Olufemi Vaughan","Pamela Matheson","Paul Rockwell","Paul Schroeder Rodriguez","Pavel Machala","Pooja Rangan","Rachel Bernard","Rachel Bernard\n\nVictor Guevara","Rachel Levin","Rachel Levin\n\nRebecca Hewitt","Rafeeq Hasan","Raina Uhden","Rebecca Hewitt","Rebecca Sinos","Rebecca Stephens Falcasantos","Richard Hutchins","Rick Lopez","Robert Benedetto","Robert Hayashi","Ron Bashford","Rose Rowson","Russell Lohse","Ruxandra Paul","Ryan Alvarado","SEVAN Tavoukdjian","Sakeef M. Karim","Samuel Morse","Samuel Morse\n\nTrent Maxey","Sanam Nader-Esfahani","Sara Brenneis","Sarah Gillespie","Sarah Piazza","Sarah Turgeon","Scott Alfeld","Scott Alfeld\n\nScott Kaplan","Scott Kaplan\n\nSophia Yoo","Sean Redding","Seok Hyun Byun","Sergey Glebov","Shunan Yang","Solsiree del Moral","Sonya Clark","Sophia Yoo","Stacey Murrell","Stefan Bradley","Stephen Wardell","Susan Niditch","Tariq Jaffer","Tatyana Babyonyshev","Tatyana Gershkovich","Taylor Price","Tekla Harms","Tess Clancy","Thea Kristensen","Thirii Myint","Thomas Dumm","Timothy Ong","Timothy Van Compernolle","Trent Maxey","Vanessa Fong","Varun Kishore","Victor Guevara","Wendy Bergoffen","William Loinaz","Xiaocheng Chen （陈笑成）","Xuanlin Ye","Yongheng Zhang","Youssef Ben Ismail","Zoë Dostal"],"rows":[["PSYC 100-01",36,"Intro to Psychology",199,44,2,84,"TR","10:05 AM - 11:20 AM",605,680],["PSYC 228-01",36,"Clinical Psychology",142,28,2,84,"TR","1:05 PM - 2:20 PM",785,860],["PSYC 122-01",36,"Statistics for Behav Sci",188,36,2,98,"MW","11:35 AM - 12:50 PM",695,770],["BIOL 498-01",8,"Senior Honors",0,19,2,59,"M","4:05 PM - 4:55 PM",965,1015],["BIOL 498D-01",8,"Senior Honors",0,1,2,0,"M","4:05 PM - 4:55 PM",965,1015],["ARHA 109-01",4,"Intro to Sculpture",177,13,2,28,"TR","1:05 PM - 4:05 PM",785,965],["CHIN 101-01",11,"First-Year Chinese I",283,9,2,102,"MTWRF","9:00 AM - 9:50 AM",540,590],["CHIN 201-01",11,"Second-Year Chinese I",258,7,2,104,"MTWRF","10:05 AM - 10:55 AM",605,655],["CHIN 301-01",11,"Third-Year Chinese I",258,3,2,104,"MWF","11:35 AM - 12:25 PM",695,745],["ARHA 102-01",4,"Practice of Art",73,15,2,31,"TR","1:05 PM - 4:05 PM",785,965],["FYSE 133-01",22,"Implications of Origin",221,15,2,80,"TR","11:35 AM - 12:50 PM",695,770],["ARHA 383-01/ ASLC 383-01",4,"Tea Ceremony",245,21,2,32,"MW","11:35 AM - 12:50 PM",695,770],["ARCH 122-01/ ARHA 122-01",3,"Urban Sketching",92,17,2,29,"TR","2:35 PM - 3:50 PM",875,950],["PHIL 111-01",33,"Philosophical Questions",216,16,2,47,"TR","2:35 PM - 3:50 PM",875,950],["ARCH 159-01/ ARHA 159-01/ EUST 159-01",3,"Modernity & Avant-Gardes",149,19,2,34,"MW","1:05 PM - 2:20 PM",785,860],["PHIL 213-01",33,"Logic",10,37,2,16,"M","10:05 AM - 11:20 AM",605,680],["FYSE 106-01",22,"The Emotions",184,15,2,21,"TR","11:35 AM - 12:50 PM",695,770],["PSYC 100-03",36,"Intro to Psychology",82,40,2,98,"MW","10:05 AM - 11:20 AM",605,680],["NEUR 211-01/ PSYC 211-01",32,"Cognitive  Neuroscience",194,40,2,59,"MW","2:35 PM - 3:50 PM",875,950],["PSYC 369-01",36,"Psychotherapy",82,18,2,83,"MW","1:05 PM - 2:20 PM",785,860],["LJST 103-01",28,"Legal Institutions",171,46,2,34,"TR","2:35 PM - 3:50 PM",875,950],["PHIL 217-01",33,"Ancient Greek Philosophy",147,18,2,52,"MW","1:05 PM - 2:20 PM",785,860],["PSYC 205-01",36,"Sex Differences in Psych",251,14,2,83,"MW","11:35 AM - 12:50 PM",695,770],["PSYC 220-01",36,"Social Psychology",50,40,2,59,"MW","8:35 AM - 9:50 AM",515,590],["AAPI 335-01/ PSYC 337-01",0,"Stereotypes & Prejudice",199,18,2,61,"TR","2:35 PM - 3:50 PM",875,950],["NEUR 361-01/ PSYC 361-01",32,"Consciousness",194,18,2,82,"T","1:05 PM - 4:05 PM",785,965],["PSYC 100-02",36,"Intro to Psychology",46,40,2,84,"TR","8:35 AM - 9:50 AM",515,590],["PSYC 221-01",36,"Personality",20,39,2,7,"TR","1:05 PM - 2:20 PM",785,860],["EDST 227-01/ PSYC 227-01",16,"Developmental Psychology",249,42,2,59,"TR","8:35 AM - 9:50 AM",515,590],["PSYC 368-01",36,"Autobiographical Memory",188,14,2,83,"MW","2:35 PM - 3:50 PM",875,950],["LJST 209-01",28,"Psychic Lives of Power",212,30,2,103,"TR","10:05 AM - 11:20 AM",605,680],["ARHA 263-01",4,"The Art Market",215,29,2,34,"TR","1:05 PM - 2:20 PM",785,860],["ARHA 207-01",4,"Talking with Beads",260,18,2,40,"T","1:05 PM - 4:05 PM",785,965],["ARHA 273-01/ FAMS 335-01",4,"Experiments-16 mm Film",264,6,2,41,"TR","1:05 PM - 4:05 PM",785,965],["LJST 253-01",28,"Arendt's Judgments",5,31,2,57,"TR","8:35 AM - 9:50 AM",515,590],["ARHA 441-01/ FAMS 441-01",4,"Documentary Production",4,6,2,41,"F","9:00 AM - 4:30 PM",540,990],["ARHA 246-01",4,"Public Art Collaborative",177,12,2,28,"TR","9:00 AM - 11:00 AM",540,660],["ARHA 422H-01",4,"Research and Archiving",73,2,2,40,"F","10:05 AM - 12:50 PM",605,770],["ECON 331-01",15,"Adv Macroeconomics",115,17,2,24,"MW","2:35 PM - 3:50 PM",875,950],["ECON 361-01",15,"Advanced Econometrics",143,11,2,25,"TR","1:05 PM - 2:20 PM",785,860],["ECON 420-01",15,"Game Theory & Applicatn",56,32,2,7,"MWF","2:35 PM - 3:50 PM",875,950],["LJST 260-01/ SWAG 262-01",28,"Feminist Legal Theory",212,24,2,57,"TR","2:35 PM - 3:50 PM",875,950],["ARHA 155-01",4,"Contemporary Art",215,39,2,34,"MW","10:05 AM - 11:20 AM",605,680],["ARHA 111-01",4,"Intro to Drawing",2,14,2,31,"MW","1:05 PM - 4:05 PM",785,965],["ARCH 164-01/ ARHA 164-01",3,"North American Art/Arch",154,12,2,36,"TR","2:35 PM - 3:50 PM",875,950],["ARHA 117-01/ FAMS 222-01",4,"Intro to Video Prod.",264,12,2,41,"MW","1:05 PM - 4:05 PM",785,965],["ARHA 309-01",4,"The Stories of Images",38,9,2,39,"TR","9:00 AM - 11:00 AM",540,660],["ARCH 136-01/ ARHA 136-01/ EUST 136-01",3,"British Art and Design",287,24,2,40,"TR","10:05 AM - 11:20 AM",605,680],["ECON 300-01",15,"Microeconomics",191,28,2,23,"TR","8:35 AM - 9:50 AM",515,590],["ECON 330-01",15,"Macroeconomics",210,33,2,7,"TR","10:05 AM - 11:20 AM",605,680],["ECON 237-02",15,"Financial Globalization",3,27,2,92,"TR","2:35 PM - 3:50 PM",875,950],["ECON 453-01",15,"Econ of Entrepreneurship",115,18,2,24,"MW","10:05 AM - 11:20 AM",605,680],["ECON 450-01",15,"Monetary Theory",210,19,2,25,"TR","2:35 PM - 3:50 PM",875,950],["ARHA 108-01",4,"Intro to Printmaking",38,11,2,39,"TR","1:05 PM - 4:05 PM",785,965],["ECON 300-02",15,"Microeconomics",191,30,2,23,"TR","10:05 AM - 11:20 AM",605,680],["ECON 360-01",15,"Econometrics",192,34,2,84,"TR","11:35 AM - 12:50 PM",695,770],["ECON 237-01",15,"Financial Globalization",3,32,2,16,"TR","1:05 PM - 2:20 PM",785,860],["ECON 262-01",15,"Development Economics",192,31,2,59,"TR","10:05 AM - 11:20 AM",605,680],["ECON 211-01",15,"AntiRacist AntiEconomics",127,9,2,55,"MW","1:05 PM - 2:20 PM",785,860],["SPAN 101-01",40,"Spanish I",63,5,2,5,"MW","8:35 AM - 9:50 AM",515,590],["SPAN 495-01",40,"Senior Seminar",222,15,2,16,"MW","2:35 PM - 3:50 PM",875,950],["EUST 426-01/ SPAN 426-01",19,"Spanish Anti/fascists",248,10,2,20,"TR","10:05 AM - 11:20 AM",605,680],["SPAN 101-02",40,"Spanish I",63,10,2,5,"MW","10:05 AM - 11:20 AM",605,680],["SPAN 102-02",40,"Spanish II",250,8,2,4,"MW","2:35 PM - 3:50 PM",875,950],["LLAS 301-01/ SPAN 301-01",29,"Literature and Culture",167,12,2,13,"TR","1:05 PM - 2:20 PM",785,860],["LLAS 205-01/ SPAN 205-01",29,"Your Bilingual Voice",63,13,2,5,"MW","2:35 PM - 3:50 PM",875,950],["COLQ 410-01/ ENGL 450-01",13,"Life Fictions",195,16,2,57,"MW","1:05 PM - 2:20 PM",785,860],["SPAN 102-01",40,"Spanish II",250,12,2,14,"MW","10:05 AM - 11:20 AM",605,680],["LLAS 301-02/ SPAN 301-02",29,"Literature and Culture",250,11,2,13,"MW","1:05 PM - 2:20 PM",785,860],["LJST 291-01",28,"Cultural Lives of AI",185,30,2,89,"TR","2:35 PM - 3:50 PM",875,950],["LJST 342-01",28,"Carl Schmitt",5,17,2,57,"M","2:35 PM - 5:00 PM",875,1020],["LJST 345-01",28,"Law and Literature",185,17,2,25,"W","2:35 PM - 5:00 PM",875,1020],["ARCH 381-01/ ARHA 389-01/ LLAS 381-01/ SPAN 381-01",3,"El desierto",178,20,2,57,"TR","10:05 AM - 11:20 AM",605,680],["BLST 345-01",9,"Black Studies Workshop",219,8,2,26,"W","2:35 PM - 5:20 PM",875,1040],["ARCH 257-01/ ARHA 257-01/ BLST 253-01",3,"Building Colonial Cities",75,44,2,34,"MW","2:35 PM - 3:50 PM",875,950],["FREN 101-01",21,"Beginning French I",230,6,2,5,"MWF","11:35 AM - 12:25 PM",695,745],["FREN 101-01F",21,"Beginning French I",0,1,0,5,"TR","9:00 AM - 9:50 AM",540,590],["BLST 236-01/ SWAG 235-01",9,"Black Sexualities",159,7,2,26,"TR","2:35 PM - 3:50 PM",875,950],["FREN 101-02",21,"Beginning French I",230,2,2,5,"MWF","1:30 PM - 2:20 PM",810,860],["FREN 101-02F",21,"Beginning French I",0,1,0,45,"TR","1:30 PM - 2:20 PM",810,860],["FREN 101-04F",21,"Beginning French I",0,1,0,46,"TR","1:30 PM - 2:20 PM",810,860],["FREN 101-06F",21,"Beginning French I",0,2,0,5,"TR","4:05 PM - 4:55 PM",965,1015],["BLST 111-01",9,"Intro to Black Studies",263,14,2,26,"MW","11:35 AM - 12:50 PM",695,770],["BIOL 201-01",8,"Disease Ecology w/Lab",196,5,2,60,"MW","11:35 AM - 12:50 PM",695,770],["BLST 208-01/ HIST 211-01",9,"African Migrations",219,22,2,13,"MW","11:35 AM - 12:50 PM",695,770],["BLST 280-01/ HIST 280-01/ LLAS 280-01",9,"Slave Resistance",240,6,2,47,"TR","1:05 PM - 2:20 PM",785,860],["FREN 101-03F",21,"Beginning French I",0,3,0,5,"TR","10:05 AM - 10:55 AM",605,655],["BLST 339-01/ ENGL 361-01/ SWAG 338-01",9,"Toni Morrison",45,14,2,42,"MW","11:35 AM - 12:50 PM",695,770],["BIOL 230-01/ ENST 210-01",8,"Ecology",86,17,2,84,"MWF","9:00 AM - 9:50 AM",540,590],["FREN 103-03F",21,"Beginning French II",0,4,0,21,"R","1:30 PM - 2:20 PM",810,860],["GREE 215-01",25,"Intro to Greek Tragedy",232,3,2,48,"MWF","10:05 AM - 10:55 AM",605,655],["GREE 318-01",25,"Intro to Greek Epic",100,7,2,48,"MW","11:35 AM - 12:50 PM",695,770],["BIOL 201-01L",8,"Disease Ecology w/Lab",196,5,1,68,"T","1:05 PM - 4:05 PM",785,965],["FREN 103-01",21,"Beginning French II",230,6,2,13,"MWF","10:05 AM - 10:55 AM",605,655],["FREN 103-02F",21,"Beginning French II",0,2,0,4,"R","10:05 AM - 10:55 AM",605,655],["FREN 207-01",21,"Advanced French I",14,13,2,21,"MWF","10:05 AM - 10:55 AM",605,655],["FREN 207-02",21,"Advanced French I",183,6,2,21,"TR","4:05 PM - 5:20 PM",965,1040],["ANTH 201-01",2,"Anthro & Science Fiction",278,14,2,16,"MWF","8:00 AM - 8:50 AM",480,530],["GERM 101-01",24,"Elementary German I",30,8,2,19,"MWF","10:05 AM - 10:55 AM",605,655],["CLAS 128-01",12,"Roman Literature",214,6,2,15,"TR","10:05 AM - 11:20 AM",605,680],["FREN 208-01",21,"Advanced French II",168,7,2,14,"MWF","9:00 AM - 9:50 AM",540,590],["ANTH 112-01",2,"Sociocultural Anthro.",54,41,2,34,"TR","10:05 AM - 11:20 AM",605,680],["GERM 101-02",24,"Elementary German I",30,8,2,21,"MWF","11:35 AM - 12:25 PM",695,745],["ARCH 365-01/ EUST 365-01/ FAMS 384-01/ GERM 365-01",3,"Making Memorials",102,10,2,44,"F","11:35 AM - 2:20 PM",695,860],["BIOL 281-01",8,"Animal Behavior w/Lab",85,9,2,61,"MW","11:35 AM - 12:50 PM",695,770],["THDA 111-01",43,"Language of Movement",26,22,2,100,"TR","1:05 PM - 2:55 PM",785,895],["BLST 300-01",9,"Research Black Studies",117,8,2,80,"T","2:35 PM - 5:20 PM",875,1040],["GERM 205-01",24,"Intermediate German",30,11,2,21,"MW","1:05 PM - 2:20 PM",785,860],["BIOL 260-01",8,"Animal Physiology",135,9,2,80,"MW","10:05 AM - 11:20 AM",605,680],["GERM 324-01/ SWAG 324-01",24,"Literature after Fascism",132,8,2,55,"TR","2:35 PM - 3:50 PM",875,950],["ARHA 119-01",4,"Intro to Painting",284,4,2,38,"MW","1:05 PM - 4:05 PM",785,965],["GREE 111-01",25,"Intro Greek Language",91,9,2,4,"MWF","9:00 AM - 9:50 AM",540,590],["BIOL 281-02L",8,"Animal Behavior w/Lab",85,5,1,78,"R","8:00 AM - 11:00 AM",480,660],["PHYS 116-01",34,"Mechanics",119,47,2,86,"MW","11:35 AM - 12:50 PM",695,770],["BIOL 281-01L",8,"Animal Behavior w/Lab",85,4,1,78,"T","8:00 AM - 11:00 AM",480,660],["PHIL 222-01/ PHYS 222-01",33,"Understanding Space/Time",114,26,2,105,"TR","2:35 PM - 3:50 PM",875,950],["BCBP 291-01L/ BIOL 291-01L",7,"Cell Struct/Func w/Lab",182,18,1,76,"T","1:05 PM - 4:05 PM",785,965],["BIOL 301-01/ NEUR 301-01",8,"Molecular Neurobio w/Lab",130,12,2,84,"MWF","10:05 AM - 10:55 AM",605,655],["BIOL 301-01L/ NEUR 301-01L",8,"Molecular Neurobio w/Lab",130,12,1,58,"R","1:05 PM - 4:05 PM",785,965],["SOCI 316-01",39,"Social Research",244,13,2,52,"TR","1:05 PM - 2:20 PM",785,860],["BCBP 291-01/ BIOL 291-01",7,"Cell Struct/Func w/Lab",182,18,2,60,"TR","10:05 AM - 11:20 AM",605,680],["SOCI 125-01",39,"Sociology Everyday Life",269,41,2,7,"MW","1:05 PM - 2:20 PM",785,860],["PHYS 116-01F",34,"Mechanics",119,23,0,60,"M","1:30 PM - 2:20 PM",810,860],["PHYS 117-01",34,"Electromagnetism",120,48,2,59,"MW","11:35 AM - 12:50 PM",695,770],["PHYS 225-01",34,"Modern Physics",113,35,2,23,"MWF","9:00 AM - 9:50 AM",540,590],["PHYS 116L-02L",34,"Mechanics Lab",119,23,1,62,"F","8:20 AM - 11:20 AM",500,680],["PHYS 117L-01L",34,"Electromagnetism Lab",120,24,1,64,"R","1:05 PM - 4:05 PM",785,965],["PHYS 125-01",34,"Oscillations and Waves",37,29,2,90,"MWF","11:35 AM - 12:50 PM",695,770],["PHYS 125L-01",34,"Oscillations/Waves Lab",37,15,1,63,"W","2:35 PM - 5:35 PM",875,1055],["PHYS 116-02F",34,"Mechanics",119,24,0,60,"M","2:35 PM - 3:25 PM",875,925],["PHYS 117-01F",34,"Electromagnetism",120,26,0,88,"M","1:30 PM - 2:20 PM",810,860],["PHYS 117L-02L",34,"Electromagnetism Lab",120,24,1,64,"F","1:05 PM - 4:05 PM",785,965],["LATI 441-01",27,"Advanced Readings I",234,6,2,48,"MW","1:05 PM - 2:20 PM",785,860],["PHYS 117-02F",34,"Electromagnetism",120,22,0,88,"M","2:35 PM - 3:25 PM",875,925],["PHYS 116L-01L",34,"Mechanics Lab",119,24,1,62,"R","1:05 PM - 4:05 PM",785,965],["PHYS 347-01",34,"Electromagnetic Theory I",166,10,2,60,"MWF","9:00 AM - 9:50 AM",540,590],["STAT 135-02",41,"Intro to Stats Modeling",220,23,2,99,"MWF","10:05 AM - 10:55 AM",605,655],["MATH 360-02/ STAT 360-02",30,"Probability",155,24,2,95,"MWF","1:30 PM - 2:20 PM",810,860],["STAT 231-01",41,"Data Science",152,19,2,99,"TR","10:05 AM - 11:20 AM",605,680],["STAT 495-01",41,"Advanced Data Analysis",21,17,2,91,"MWF","9:00 AM - 9:50 AM",540,590],["THDA 122H-01",43,"Beg./Int. Hip Hop Dance",61,12,2,101,"MW","1:05 PM - 2:20 PM",785,860],["THDA 120H-01",43,"Dance: Beg./Int. Ballet",151,15,2,100,"MW","10:05 AM - 11:20 AM",605,680],["THDA 315H-01",43,"Dance: Adv. Contemporary",125,11,2,100,"MW","2:35 PM - 4:25 PM",875,985],["STAT 135-03",41,"Intro to Stats Modeling",152,24,2,99,"TR","11:35 AM - 12:50 PM",695,770],["STAT 230-01",41,"Intermediate Stats",42,11,2,99,"TR","1:05 PM - 2:20 PM",785,860],["MATH 360-01/ STAT 360-01",30,"Probability",155,23,2,89,"MWF","9:00 AM - 9:50 AM",540,590],["STAT 135-01",41,"Intro to Stats Modeling",220,25,2,99,"MWF","9:00 AM - 9:50 AM",540,590],["STAT 135-04",41,"Intro to Stats Modeling",148,24,2,99,"MW","11:35 AM - 12:50 PM",695,770],["STAT 135-05",41,"Intro to Stats Modeling",148,21,2,99,"MW","2:35 PM - 3:50 PM",875,950],["STAT 230-02",41,"Intermediate Stats",42,10,2,99,"TR","2:35 PM - 3:50 PM",875,950],["STAT 108-01",41,"Stat Ethics Institutions",22,18,2,96,"R","2:35 PM - 5:35 PM",875,1055],["STAT 320-01",41,"Statistical Comm",220,12,2,99,"MW","1:05 PM - 2:20 PM",785,860],["HIST 252-01/ SWAG 252-01",26,"Hist Race Gender Comics",53,18,2,17,"WF","1:05 PM - 2:20 PM",785,860],["ENGL 171-01/ THDA 170-01",17,"Intro to Playwriting",243,18,2,107,"M","2:35 PM - 5:20 PM",875,1040],["THDA 265-01",43,"Intro to Scenic Design",144,9,2,106,"MW","1:05 PM - 2:20 PM",785,860],["THDA 126H-01",43,"Dance: Afro-Cuban Dance",211,3,2,100,"MW","1:05 PM - 2:20 PM",785,860],["ENGL 226-01",17,"Fiction Writing I",72,14,2,44,"T","1:05 PM - 4:05 PM",785,965],["ENGL 226-02",17,"Fiction Writing I",273,15,2,21,"WF","2:35 PM - 3:50 PM",875,950],["BIOL 111-01",8,"Intro to Biol Research",52,8,2,82,"F","9:00 AM - 9:50 AM",540,590],["BIOL 111-01L",8,"Intro to Biol Research",52,8,1,71,"R","1:05 PM - 4:05 PM",785,965],["THDA 130-01",43,"What is Acting?",110,13,2,101,"TR","2:35 PM - 4:25 PM",875,985],["THDA 230-01",43,"Dramatic Diversities",110,13,2,101,"TR","11:35 AM - 12:50 PM",695,770],["BCBP 371-01L/ BIOL 371-01L",7,"Molecular Genetics w/Lab",57,16,1,77,"W","2:35 PM - 5:20 PM",875,1040],["ENGL 108-01/ FAMS 108-01",17,"True Crime",224,20,2,35,"U","7:00 PM - 10:00 PM",1140,1320],["ENGL 180-01/ FAMS 110-01",17,"Film and Writing",138,13,2,37,"M","7:00 PM - 10:00 PM",1140,1320],["ENGL 238-01",17,"Shakespeare",31,25,2,66,"TR","10:05 AM - 11:20 AM",605,680],["BCBP 371-01/ BIOL 371-01",7,"Molecular Genetics w/Lab",57,16,2,88,"TR","10:05 AM - 11:20 AM",605,680],["ENGL 221-01",17,"Writing Poetry I",160,12,2,102,"W","2:35 PM - 5:30 PM",875,1050],["ENGL 221-02",17,"Writing Poetry I",96,12,2,15,"T","2:35 PM - 5:05 PM",875,1025],["ENGL 250-01",17,"Reading the Novel",95,19,2,25,"MW","1:05 PM - 2:20 PM",785,860],["BIOL 181L-01L",8,"Adaptation & Org Lab",272,18,1,74,"T","8:00 AM - 11:00 AM",480,660],["BIOL 191L-02L",8,"Mol, Genes, & Cells Lab",12,6,1,71,"W","1:05 PM - 4:05 PM",785,965],["BIOL 191L-03L",8,"Mol, Genes, & Cells Lab",12,9,1,71,"R","8:00 AM - 11:00 AM",480,660],["ENGL 441-01/ EUST 374-01",17,"Medieval Lyric",106,12,2,14,"W","1:05 PM - 3:35 PM",785,935],["AMST 111-01/ ENGL 151-01",1,"Global Valley",81,17,2,51,"TR","2:35 PM - 3:50 PM",875,950],["BIOL 181-01",8,"Adaptation & Organism",88,48,2,86,"MWF","10:05 AM - 10:55 AM",605,655],["BIOL 181-02F",8,"Adaptation & Organism",87,23,0,88,"F","1:30 PM - 2:20 PM",810,860],["BIOL 181L-02L",8,"Adaptation & Org Lab",272,16,1,74,"T","1:05 PM - 4:05 PM",785,965],["BIOL 191L-01L",8,"Mol, Genes, & Cells Lab",12,15,1,71,"T","1:05 PM - 4:05 PM",785,965],["BLST 256-01/ ENGL 256-01",9,"The Idea of Africa",51,16,2,13,"MW","2:35 PM - 3:50 PM",875,950],["ENGL 339-01/ SWAG 339-01",17,"Early Women Writers",16,6,2,52,"TR","2:35 PM - 3:50 PM",875,950],["BIOL 181-01F",8,"Adaptation & Organism",87,25,0,88,"F","11:35 AM - 12:25 PM",695,745],["BIOL 181L-03L",8,"Adaptation & Org Lab",272,14,1,74,"W","1:05 PM - 4:05 PM",785,965],["BIOL 191-01",8,"Molecules, Genes & Cells",12,30,2,59,"MW","10:05 AM - 10:55 AM",605,655],["BIOL 191-01F",8,"Molecules, Genes & Cells",12,30,0,90,"R","2:35 PM - 4:30 PM",875,990],["ENGL 496-01",17,"Literary/Critical Theory",31,17,2,55,"TR","1:05 PM - 2:20 PM",785,860],["ENGL 122-01",17,"Poems, Songs, Stories",95,21,2,36,"MW","10:05 AM - 11:20 AM",605,680],["ENGL 426-01",17,"Writing the Novella",140,12,2,19,"TR","2:35 PM - 3:50 PM",875,950],["ENGL 494-01",17,"Globe and Planet in Lit",28,3,2,23,"W","1:05 PM - 3:35 PM",785,935],["ENGL 191-01",17,"Community, Context,",72,24,2,36,"WF","1:05 PM - 2:20 PM",785,860],["EUST 129-01/ HIST 205-01",19,"Eur. Intellectual Hist",11,6,2,102,"TR","4:05 PM - 5:20 PM",965,1040],["ENST 236-01",18,"Humanity in Nature",77,17,2,83,"MW","10:05 AM - 11:20 AM",605,680],["EUST 130-01/ HIST 130-01",19,"World War I",83,25,2,51,"TR","8:35 AM - 9:50 AM",515,590],["HIST 155-01",26,"20th-Century America",90,32,2,34,"MWF","9:00 AM - 9:50 AM",540,590],["ASLC 171-01/ HIST 171-01",5,"History Dynastic China",97,8,2,53,"MW","8:35 AM - 9:50 AM",515,590],["ENST 250-01",18,"US Environmental Policy",35,25,2,90,"TR","1:05 PM - 2:20 PM",785,860],["ASLC 112-01/ EUST 112-01/ HIST 112-01/ RUSS 130-01",5,"Russian Emp in Eurasia",11,5,2,103,"TR","2:35 PM - 3:50 PM",875,950],["ASLC 273-01/ HIST 273-01",5,"Epic and History",190,9,2,54,"MW","1:05 PM - 2:20 PM",785,860],["HIST 301-02",26,"Writing the Past",255,11,2,52,"MW","8:35 AM - 9:50 AM",515,590],["ASLC 368-01/ HIST 368-01",5,"Frontier Chinese Hist",97,1,2,14,"T","1:05 PM - 4:05 PM",785,965],["ASLC 389-01/ HIST 389-01",5,"Ottoman Modern",202,4,2,53,"MW","10:05 AM - 11:20 AM",605,680],["PHYS 123-01",34,"Newtonian Synthesis",67,22,2,84,"MWF","11:35 AM - 12:50 PM",695,770],["ENST 301-01/ GEOL 301-01",18,"Hydrogeology",29,8,2,8,"MWF","11:35 AM - 12:25 PM",695,745],["HIST 394-01",26,"Palestine-Israel",7,11,2,15,"MW","1:05 PM - 2:20 PM",785,860],["ASLC 201-01/ HIST 201-01",5,"Indian Ocean World Hist",190,12,2,53,"MW","2:35 PM - 3:50 PM",875,950],["PHYS 123L-01",34,"Newtonian Synth Lab",34,22,1,62,"M","1:05 PM - 4:05 PM",785,965],["RELI 111-01",37,"Introduction to Religion",204,19,2,24,"TR","10:05 AM - 11:20 AM",605,680],["GEOL 109-01",23,"Climate Change",213,31,2,7,"MWF","10:05 AM - 10:55 AM",605,655],["ENST 301-01L/ GEOL 301-01L",18,"Hydrogeology",29,8,1,8,"M","1:05 PM - 3:50 PM",785,950],["GEOL 311-01",23,"Sediment & Stratigraph",69,8,2,9,"MWF","9:00 AM - 9:50 AM",540,590],["ENST 495-01",18,"Senior Seminar",35,14,2,55,"TR","10:05 AM - 11:20 AM",605,680],["ECON 271-01",15,"Economic History of U.S.",59,24,2,84,"MW","2:35 PM - 3:50 PM",875,950],["GEOL 311-01L",23,"Sediment & Stratigraph",69,8,1,9,"R","1:05 PM - 3:50 PM",785,950],["ENST 110L-02L",18,"Environmental Sci Lab",227,9,1,78,"R","2:35 PM - 5:35 PM",875,1055],["GEOL 401-01",23,"Plate Tectonics",270,7,2,11,"MW","10:05 AM - 11:20 AM",605,680],["GEOL 401-01L",23,"Plate Tectonics",270,7,1,11,"W","8:00 AM - 9:00 AM",480,540],["GEOL 321-01",23,"Igneous Metamor Petrolgy",280,2,2,10,"TR","10:05 AM - 11:20 AM",605,680],["MATH 105-01",30,"Calculus with Algebra",71,17,2,93,"MWF","1:30 PM - 2:20 PM",810,860],["ECON 498-01",15,"Senior Honors",56,14,2,24,"TR","1:05 PM - 2:20 PM",785,860],["ENST 110L-01L",18,"Environmental Sci Lab",231,8,1,78,"W","1:05 PM - 4:05 PM",785,965],["FYSE 109-01",22,"Rebels and Reformers",281,14,2,55,"TR","11:35 AM - 12:50 PM",695,770],["GEOL 111-01L",23,"Planet Earth",225,13,1,6,"R","9:00 AM - 10:55 AM",540,655],["BLST 322-01/ HIST 283-01",9,"Intro South African Hist",255,2,2,53,"MW","1:05 PM - 2:20 PM",785,860],["MATH 121-03",30,"Intermediate Calculus",256,16,2,7,"MWF","11:35 AM - 12:25 PM",695,745],["FYSE 107-01",22,"Secrets and Lies",36,15,2,22,"TR","10:05 AM - 11:20 AM",605,680],["FYSE 109-02",22,"Rebels and Reformers",281,15,2,52,"TR","8:35 AM - 9:50 AM",515,590],["GEOL 111-01",23,"Planet Earth",226,23,2,7,"MWF","9:00 AM - 9:50 AM",540,590],["GEOL 111-02L",23,"Planet Earth",280,10,1,6,"R","1:05 PM - 3:05 PM",785,905],["GEOL 200H-01",23,"Geology Field Trip",70,19,2,10,"F","10:05 AM - 11:20 AM",605,680],["GEOL 321-01L",23,"Igneous Metamor Petrolgy",280,2,1,10,"T","1:05 PM - 3:50 PM",785,950],["HIST 409-01",26,"Female Rulership",262,10,2,50,"M","1:05 PM - 4:05 PM",785,965],["MATH 121-01",30,"Intermediate Calculus",65,38,2,96,"MWF","9:00 AM - 9:50 AM",540,590],["MATH 211-02",30,"Multivariable Calculus",137,24,2,92,"MWF","10:05 AM - 10:55 AM",605,655],["MATH 211-03",30,"Multivariable Calculus",1,49,2,96,"MWF","11:35 AM - 12:25 PM",695,745],["MATH 220-02",30,"Mathematical Reasoning",71,29,2,23,"MWF","10:05 AM - 10:55 AM",605,655],["MATH 271-01",30,"Linear Algebra",155,23,2,97,"MWF","10:05 AM - 10:55 AM",605,655],["MATH 345-01",30,"Functns Complex Variable",1,23,2,97,"MWF","1:30 PM - 2:20 PM",810,860],["MATH 350-01",30,"Groups, Rings and Fields",200,17,2,94,"MWF","10:05 AM - 10:55 AM",605,655],["MATH 350-02",30,"Groups, Rings and Fields",208,26,2,94,"TR","10:05 AM - 11:20 AM",605,680],["MATH 111-01",30,"Intro to the Calculus",137,25,2,92,"MWF","11:35 AM - 12:25 PM",695,745],["MATH 111-02",30,"Intro to the Calculus",200,15,2,92,"MWF","9:00 AM - 9:50 AM",540,590],["MATH 111-03",30,"Intro to the Calculus",126,22,2,95,"MWF","10:05 AM - 10:55 AM",605,655],["MATH 111-04",30,"Intro to the Calculus",242,29,2,97,"MWF","11:35 AM - 12:25 PM",695,745],["MATH 121-02",30,"Intermediate Calculus",65,40,2,96,"MWF","10:05 AM - 10:55 AM",605,655],["MATH 260-01",30,"Differential Equations",89,25,2,94,"MWF","9:00 AM - 9:50 AM",540,590],["MATH 355-01",30,"Intro to Analysis",126,22,2,95,"MWF","11:35 AM - 12:25 PM",695,745],["MUSI 211-01",31,"Exploring Music",19,11,2,3,"TR","1:05 PM - 2:20 PM",785,860],["MUSI 341-01",31,"Harmony & Counterpoint",139,8,2,2,"MW","10:05 AM - 11:20 AM",605,680],["MATH 211-01",30,"Multivariable Calculus",285,58,2,98,"MWF","9:00 AM - 9:50 AM",540,590],["MATH 220-01",30,"Mathematical Reasoning",236,29,2,95,"MWF","9:00 AM - 9:50 AM",540,590],["MATH 220-03",30,"Mathematical Reasoning",193,26,2,97,"TR","1:05 PM - 2:20 PM",785,860],["MATH 271-02",30,"Linear Algebra",128,17,2,97,"TR","10:05 AM - 11:20 AM",605,680],["MATH 280-01",30,"Graph Theory",236,26,2,94,"TR","8:35 AM - 9:50 AM",515,590],["EUST 221-01/ MUSI 221-01",19,"Voices from Bygone Time",161,7,2,2,"WF","11:35 AM - 12:50 PM",695,770],["MUSI 342-01",31,"Harmony, Structure, ...",139,2,2,3,"MW","1:05 PM - 2:20 PM",785,860],["MUSI 213-01",31,"Jazz Theory & Improvis I",43,8,2,1,"MW","2:35 PM - 3:50 PM",875,950],["MATH 355-02",30,"Intro to Analysis",101,27,2,95,"TR","10:05 AM - 11:20 AM",605,680],["MATH 255-01",30,"Geometry",193,10,2,97,"TR","2:35 PM - 3:50 PM",875,950],["MATH 325-01",30,"Calculus of Variations",109,31,2,96,"TR","10:05 AM - 11:20 AM",605,680],["MUSI 111-01",31,"Introduction to Music",123,25,2,3,"MWF","10:05 AM - 10:55 AM",605,655],["MUSI 269-01",31,"Composition I",84,6,2,2,"MW","1:05 PM - 2:20 PM",785,860],["EDST 437-01/ POSC 437-01",16,"Disabling Institutions",163,6,2,27,"R","8:00 AM - 11:00 AM",480,660],["POSC 126-01",35,"International Orders",79,22,2,16,"TR","10:05 AM - 11:20 AM",605,680],["MUSI 371-01",31,"Seminar in Composition I",84,4,2,2,"M","2:35 PM - 4:35 PM",875,995],["ANTH 239-01/ FAMS 312-01/ MUSI 238-01",2,"Soundscapes/River Valley",123,11,2,3,"MW","11:35 AM - 12:50 PM",695,770],["MUSI 228-01",31,"Rhythm",121,4,2,1,"TR","2:35 PM - 3:50 PM",875,950],["BLST 229-01/ POSC 229-01",9,"African-Amer Pol Thought",118,48,2,32,"MW","10:05 AM - 11:20 AM",605,680],["ENGL 297-01/ RELI 280-01",17,"The Qur'an As Literature",266,10,2,20,"TR","1:05 PM - 2:20 PM",785,860],["POSC 124-01",35,"Intro Political Theory",274,43,2,7,"TR","8:35 AM - 9:50 AM",515,590],["RUSS 311-01",38,"Art and Revolution",47,2,2,32,"TR","11:35 AM - 12:50 PM",695,770],["MUSI 115-01",31,"Dissecting the DAW",279,16,2,2,"TR","1:05 PM - 2:20 PM",785,860],["POSC 125-01",35,"Migration Crisis and IR",241,27,2,13,"TR","10:05 AM - 11:20 AM",605,680],["POSC 239-01",35,"Age, Aging, Ageism",241,11,2,105,"TR","1:05 PM - 2:20 PM",785,860],["POSC 265-01",35,"Plato and Rousseau",112,7,2,47,"TR","10:05 AM - 11:20 AM",605,680],["POSC 266-01",35,"Politics of the MENA",209,16,2,49,"MW","1:05 PM - 2:20 PM",785,860],["POSC 380-01",35,"Kremlin Rising",58,19,2,82,"M","1:05 PM - 4:05 PM",785,965],["ASLC 152-01/ RELI 152-01",5,"Buddhist Traditions",184,9,2,19,"TR","1:05 PM - 2:20 PM",785,860],["POSC 215-01",35,"Democratic Backsliding",122,11,2,7,"TR","2:35 PM - 4:25 PM",875,985],["POSC 369-01",35,"Marx, Nietzsche, Freud",112,9,2,4,"TR","1:05 PM - 2:20 PM",785,860],["AAPI 235-01/ POSC 235-01",0,"Lens of Border Culture",176,12,2,80,"TR","8:35 AM - 9:50 AM",515,590],["POSC 160-01/ SWAG 160-01",35,"Sexualities in IR",181,29,2,34,"MW","11:35 AM - 12:50 PM",695,770],["POSC 226-01",35,"Death of Democracy",36,14,2,22,"TR","2:35 PM - 3:50 PM",875,950],["POSC 313-01",35,"Reading Politics",223,9,2,22,"M","1:05 PM - 3:35 PM",785,935],["RUSS 301-01",38,"Third-Year Russian I",47,6,2,104,"TR","2:30 PM - 3:50 PM",870,950],["CHEM 151L-01",10,"Intro Chemistry Lab",104,20,1,72,"M","2:35 PM - 5:35 PM",875,1055],["CHEM 151L-06",10,"Intro Chemistry Lab",104,20,1,72,"R","1:30 PM - 4:30 PM",810,990],["POSC 368-01",35,"US and the Middle East",209,22,2,51,"MW","10:05 AM - 11:20 AM",605,680],["RELI 227-01",37,"Hell",233,29,2,16,"MW","11:35 AM - 12:50 PM",695,770],["RELI 367-01",37,"Reading the Rabbis",265,6,2,21,"M","2:35 PM - 5:05 PM",875,1025],["RUSS 101-01",38,"First-Year Russian I",267,6,2,104,"MWF","9:00 AM - 9:50 AM",540,590],["RUSS 301-01F",38,"Third-Year Russian I",267,6,0,103,"W","10:05 AM - 10:55 AM",605,655],["CHEM 151-01",10,"Introductory Chemistry",186,48,2,59,"MW","1:05 PM - 2:20 PM",785,860],["RELI 265-01",37,"The Rise of Apocalyptic",265,34,2,105,"MW","10:05 AM - 11:20 AM",605,680],["RUSS 101-01F",38,"First-Year Russian I",267,6,0,104,"R","9:00 AM - 9:50 AM",540,590],["CHEM 151L-02",10,"Intro Chemistry Lab",104,20,1,72,"T","8:00 AM - 11:00 AM",480,660],["CHEM 151L-03",10,"Intro Chemistry Lab",104,20,1,72,"T","1:30 PM - 4:30 PM",810,990],["CHEM 151L-04",10,"Intro Chemistry Lab",104,20,1,72,"W","2:35 PM - 5:35 PM",875,1055],["CHEM 155L-05",10,"Fundamtl Princ Chem Lab",104,19,1,72,"R","8:00 AM - 11:00 AM",480,660],["CHEM 155L-06",10,"Fundamtl Princ Chem Lab",104,20,1,72,"R","1:30 PM - 4:30 PM",810,990],["CHEM 151L-05",10,"Intro Chemistry Lab",104,19,1,72,"R","8:00 AM - 11:00 AM",480,660],["CHEM 155L-01",10,"Fundamtl Princ Chem Lab",104,20,1,72,"M","2:35 PM - 5:35 PM",875,1055],["CHEM 155L-02",10,"Fundamtl Princ Chem Lab",104,20,1,72,"T","8:00 AM - 11:00 AM",480,660],["CHEM 155L-03",10,"Fundamtl Princ Chem Lab",104,21,1,72,"T","1:30 PM - 4:30 PM",810,990],["CHEM 155L-04",10,"Fundamtl Princ Chem Lab",104,20,1,72,"W","2:35 PM - 5:35 PM",875,1055],["CHEM 155L-07",10,"Fundamtl Princ Chem Lab",104,20,1,72,"F","2:35 PM - 5:35 PM",875,1055],["CHEM 151L-07",10,"Intro Chemistry Lab",104,20,1,72,"F","2:35 PM - 5:35 PM",875,1055],["CHEM 155-01",10,"Fundamtl Chem Principles",103,92,2,86,"WF","1:05 PM - 2:20 PM",785,860],["CHEM 155-01F",10,"Fundamtl Chem Principles",103,46,0,85,"M","1:05 PM - 2:20 PM",785,860],["FYSE 120-01",22,"Vertigo and Revolution",197,15,2,50,"TR","11:35 AM - 12:50 PM",695,770],["COSC 111-01",14,"Intro Comp Science I",205,12,2,66,"TR","1:30 PM - 2:20 PM",810,860],["COSC 112L-01",14,"Intro CompSci II Lab",129,6,1,69,"F","10:05 AM - 10:55 AM",605,655],["COSC 175-01",14,"Systems I: Computer Org;",253,13,2,69,"MW","9:00 AM - 9:50 AM",540,590],["COSC 311-01",14,"Algorithms",205,34,2,66,"TR","11:35 AM - 12:50 PM",695,770],["CHEM 151-01F",10,"Introductory Chemistry",186,26,0,89,"F","1:05 PM - 2:20 PM",785,860],["COSC 111-02",14,"Intro Comp Science I",172,28,2,66,"MW","11:35 AM - 12:25 PM",695,745],["COSC 111L-02",14,"Intro Computer Sci I Lab",172,28,1,66,"F","11:35 AM - 12:25 PM",695,745],["COSC 111L-01",14,"Intro Computer Sci I Lab",205,10,1,66,"F","9:00 AM - 9:50 AM",540,590],["COSC 112-01",14,"Intro Comp Science II",129,6,2,69,"MW","10:05 AM - 10:55 AM",605,655],["COSC 175L-01L",14,"System 1: Comp. Org. Lab",253,13,1,81,"F","8:35 AM - 9:50 AM",515,590],["CHEM 161L-02L",10,"Chemical Principles Lab",68,5,1,73,"R","1:30 PM - 4:30 PM",810,990],["CHEM 231L-02L",10,"Organic Chem II Lab",93,5,1,73,"T","2:35 PM - 5:50 PM",875,1070],["CHEM 351-02L",10,"Quantum Chem/Spectrscopy",111,7,1,79,"R","1:05 PM - 4:05 PM",785,965],["CHEM 371-01L",10,"Inorganic Chemistry",55,12,1,70,"M","1:05 PM - 5:05 PM",785,1025],["COSC 275-01",14,"Systems II: O/S",254,23,2,89,"MW","11:35 AM - 12:50 PM",695,770],["COSC 401-01",14,"Theoretical Foundations",129,8,2,69,"MWF","1:30 PM - 2:20 PM",810,860],["COSC 347-01",14,"Theory Machine Learning",252,14,2,60,"MW","10:05 AM - 11:20 AM",605,680],["CHEM 161-01",10,"Chemical Principles",68,14,2,80,"MWF","1:05 PM - 2:20 PM",785,860],["CHEM 161L-01L",10,"Chemical Principles Lab",68,9,1,73,"R","8:00 AM - 11:00 AM",480,660],["CHEM 221-01",10,"Organic Chemistry I",170,85,2,86,"MWF","9:00 AM - 9:50 AM",540,590],["CHEM 221-01F",10,"Organic Chemistry I",170,26,0,88,"W","11:35 AM - 12:25 PM",695,745],["CHEM 221-03F",10,"Organic Chemistry I",170,21,0,90,"W","2:35 PM - 3:25 PM",875,925],["CHEM 221-04F",10,"Organic Chemistry I",170,26,0,88,"R","9:00 AM - 9:50 AM",540,590],["CHEM 221L-02L",10,"Organic Chem I Lab",170,19,1,75,"T","8:00 AM - 11:15 AM",480,675],["CHEM 221L-05L",10,"Organic Chem I Lab",170,16,1,75,"R","1:05 PM - 4:20 PM",785,980],["CHEM 221-02F",10,"Organic Chemistry I",170,12,0,88,"W","1:05 PM - 1:55 PM",785,835],["CHEM 221L-01L",10,"Organic Chem I Lab",170,22,1,75,"M","1:05 PM - 4:20 PM",785,980],["CHEM 221L-03L",10,"Organic Chem I Lab",170,16,1,75,"T","2:35 PM - 5:50 PM",875,1070],["CHEM 221L-04L",10,"Organic Chem I Lab",169,12,1,75,"R","8:00 AM - 11:15 AM",480,675],["CHEM 231-01",10,"Organic Chemistry II",93,13,2,80,"MWF","9:00 AM - 9:50 AM",540,590],["CHEM 231-01F",10,"Organic Chemistry II",93,13,0,89,"R","9:00 AM - 9:50 AM",540,590],["CHEM 231L-01L",10,"Organic Chem II Lab",93,8,1,73,"T","8:00 AM - 11:15 AM",480,675],["CHEM 371-01",10,"Inorganic Chemistry",55,26,2,88,"MWF","10:05 AM - 11:20 AM",605,680],["CHEM 351-01",10,"Quantum Chem/Spectrscopy",111,19,2,89,"TR","10:05 AM - 11:20 AM",605,680],["CHEM 351-01L",10,"Quantum Chem/Spectrscopy",111,12,1,79,"W","1:30 PM - 4:30 PM",810,990],["CHEM 371-02L",10,"Inorganic Chemistry",55,14,1,70,"T","1:05 PM - 5:05 PM",785,1025],["SOCI 285-01",39,"Media and Society",269,24,2,17,"MW","4:05 PM - 5:20 PM",965,1040],["THDA 169-01",43,"Elements of Style",144,22,2,106,"MW","10:05 AM - 11:20 AM",605,680],["ANTH 318-01/ ASLC 318-01",2,"Chinese Childrearing",278,6,2,16,"MWF","9:00 AM - 9:50 AM",540,590],["ECON 111-04",15,"An Intro to Economics",40,54,2,98,"MW","1:05 PM - 2:20 PM",785,860],["ECON 111F-05F",15,"Intro to Econ Discussion",40,27,0,94,"R","2:35 PM - 3:25 PM",875,925],["FREN 205-01",21,"Intermediate French",247,7,2,4,"MWF","10:05 AM - 11:20 AM",605,680],["ENST 253-01/ GEOL 253-01",18,"GIS",198,14,2,11,"TR","8:35 AM - 9:50 AM",515,590],["ARCH 333-01/ ARHA 333-01",3,"Drawing Shifting Land",2,10,2,31,"MW","9:00 AM - 11:00 AM",540,660],["ARCH 141-01/ ARHA 141-01",3,"Investigating Architec",149,16,2,36,"TR","1:05 PM - 2:20 PM",785,860],["POSC 373-01",35,"Colonialism Nationalism",18,9,2,52,"W","2:35 PM - 5:20 PM",875,1040],["ECON 111-01",15,"An Intro to Economics",74,30,2,23,"TR","1:05 PM - 2:20 PM",785,860],["ECON 111-02",15,"An Intro to Economics",74,26,2,23,"TR","2:35 PM - 3:50 PM",875,950],["ECON 111-03",15,"An Intro to Economics",143,23,2,98,"TR","10:05 AM - 11:20 AM",605,680],["ECON 111F-01F",15,"Intro to Econ Discussion",74,30,0,23,"M","1:30 PM - 2:20 PM",810,860],["ECON 111F-04F",15,"Intro to Econ Discussion",40,27,0,94,"R","1:30 PM - 2:20 PM",810,860],["ENST 110-01",18,"Environmental Science",228,17,2,82,"MWF","10:05 AM - 10:55 AM",605,655],["LATI 111-01",27,"Intro Latin I",100,9,2,47,"F","10:05 AM - 10:55 AM",605,655],["ECON 111F-02F",15,"Intro to Econ Discussion",74,26,0,23,"M","2:35 PM - 3:25 PM",875,925],["ECON 111F-03F",15,"Intro to Econ Discussion",143,23,0,16,"W","10:05 AM - 10:55 AM",605,655],["FREN 342-01/ SWAG 342-01",21,"Women of Ill Repute",168,6,2,14,"MW","11:35 AM - 12:50 PM",695,770],["ENST 253-01L/ GEOL 253-01L",18,"GIS",198,14,1,11,"W","1:05 PM - 3:50 PM",785,950],["HIST 348-01/ SWAG 348-01",26,"Hist Asian Amer. Women",53,4,2,54,"MF","10:05 AM - 11:20 AM",605,680],["PHIL 497-01",33,"Senior Capstone Seminar",10,19,2,42,"M","2:35 PM - 5:20 PM",875,1040],["GERM 101-01F",24,"Elementary German I",0,7,0,21,"R","10:05 AM - 10:55 AM",605,655],["GERM 101-03F",24,"Elementary German I",0,5,0,16,"R","11:35 AM - 12:25 PM",695,745],["EDST 470-01",16,"Advanced Research",162,4,2,14,"M","1:05 PM - 3:50 PM",785,950],["ENGL 288-01/ FAMS 218-01",17,"Intro to Film Theory",17,13,2,33,"MW","1:05 PM - 2:20 PM",785,860],["HIST 118-01",26,"Get Medieval I",262,24,2,51,"TR","1:05 PM - 2:20 PM",785,860],["HIST 341-01/ LLAS 341-01",26,"Mexican Rebels",235,9,2,54,"TR","10:05 AM - 11:20 AM",605,680],["CLAS 134-01",12,"Greek Art and Its Images",232,29,2,51,"MW","1:05 PM - 2:20 PM",785,860],["ARCH 220-01/ ARHA 256-01/ ASLC 220-01",3,"Re-Inventing Tokyo",246,14,2,32,"MW","2:35 PM - 3:50 PM",875,950],["BLST 195-01/ ENGL 195-01",9,"Black Existentialism",51,17,2,26,"MW","1:05 PM - 2:20 PM",785,860],["BLST 317-01/ ENGL 317-01",9,"Caribbean Poetry",45,12,2,42,"MW","10:05 AM - 11:20 AM",605,680],["GERM 205-01F",24,"Intermediate German",0,10,0,20,"F","1:05 PM - 1:55 PM",785,835],["EDST 140-01",16,"Discovering Data",107,15,2,65,"TR","10:05 AM - 11:20 AM",605,680],["AMST 352-01/ EDST 352-01/ SOCI 352-01",1,"Politics of Education",105,19,2,103,"W","1:05 PM - 3:50 PM",785,950],["HIST 177-01",26,"Revolutionary America",124,9,2,53,"TR","10:05 AM - 11:20 AM",605,680],["EUST 238-01/ HIST 236-01/ RUSS 237-01",19,"USSR During Cold War",257,8,2,105,"TR","8:35 AM - 9:50 AM",515,590],["EUST 214-01/ FREN 214-01",19,"Grail, Rose, and Dante",221,8,2,80,"TR","10:05 AM - 11:20 AM",605,680],["HIST 137-01",26,"Genocide",48,11,2,51,"MW","2:35 PM - 3:50 PM",875,950],["RELI 370-01",37,"Christianity: Auth/Texts",233,4,2,20,"MW","2:35 PM - 3:50 PM",875,950],["AMST 258-01L/ EDST 258-01L",1,"Museums and Education",27,15,1,103,"W","4:05 PM - 4:55 PM",965,1015],["PHIL 359-01",33,"Kant & the 19th Century",229,21,2,17,"TR","10:05 AM - 11:20 AM",605,680],["POSC 202-01",35,"Power and Violence",134,20,2,17,"M","8:00 AM - 10:45 AM",480,645],["MATH 271-03",30,"Linear Algebra",256,7,2,97,"MWF","9:00 AM - 9:50 AM",540,590],["AMST 258-01/ EDST 258-01",1,"Museums and Education",27,15,2,104,"MW","2:35 PM - 3:50 PM",875,950],["ARHA 385-01/ EUST 385-01",4,"Witch/Vampire/Monster",206,17,2,42,"TR","11:35 AM - 12:50 PM",695,770],["ARHA 286-01/ SWAG 286-01",4,"Photography and the Body",0,18,2,32,"TR","10:05 AM - 11:20 AM",605,680],["ARHA 317-01",4,"Imaginary Beings",73,11,2,31,"TR","9:00 AM - 11:00 AM",540,660],["ANTH 252-01",2,"Who's Afraid of Crowds?",218,7,2,103,"TR","1:05 PM - 2:20 PM",785,860],["PHYS 125L-02",34,"Oscillations/Waves Lab",37,14,1,63,"R","2:35 PM - 5:35 PM",875,1055],["BCBP 330-01/ BIOL 330-01/ CHEM 330-01",7,"Biochemistry I",32,44,2,90,"MW","10:05 AM - 11:20 AM",605,680],["BCBP 330-01F/ BIOL 330-01F/ CHEM 330-01F",7,"Biochemistry I",32,44,0,90,"F","10:05 AM - 10:55 AM",605,655],["CHEM 151-02F",10,"Introductory Chemistry",186,22,0,90,"F","1:05 PM - 2:20 PM",785,860],["PHIL 213-02F",33,"Logic",10,16,0,17,"WF","11:35 AM - 12:25 PM",695,745],["AMST 230-01/ LLAS 230-01",1,"Manufactured Enchantment",108,19,2,51,"MW","11:35 AM - 12:50 PM",695,770],["ARCH 272-01/ ARHA 272-01",3,"Drawing on Precedent",271,8,2,40,"MW","1:05 PM - 3:05 PM",785,905],["ARHA 275-01",4,"Photographing Landscapes",94,11,2,30,"MW","9:00 AM - 11:00 AM",540,660],["CHEM 155-02F",10,"Fundamtl Chem Principles",103,46,0,87,"M","1:05 PM - 2:20 PM",785,860],["GERM 102-01F",24,"Elementary German II",0,1,0,14,"R","10:05 AM - 10:55 AM",605,655],["PHIL 213-01F",33,"Logic",10,21,0,17,"WF","10:05 AM - 10:55 AM",605,655],["BLST 416-01/ ECON 416-01",9,"Econ of Race and Gender",127,13,2,25,"MW","10:05 AM - 11:20 AM",605,680],["ARHA 274-01/ MUSI 274-01",4,"Electronic Instruments",41,13,2,43,"MW","1:05 PM - 3:05 PM",785,905],["FREN 370-01",21,"Sounding French",14,13,2,49,"MW","2:35 PM - 3:50 PM",875,950],["GERM 102-01",24,"Elementary German II",49,2,2,20,"MWF","10:05 AM - 10:55 AM",605,655],["ARHA 210-01/ EUST 210-01",4,"Travel and European Art",287,11,2,32,"TR","2:35 PM - 3:50 PM",875,950],["ASTR 450H-01/ PHYS 450H-01",6,"Advanced Seminar",150,6,2,59,"T","3:00 PM - 5:00 PM",900,1020],["MATH 222-01",30,"Interactive theorem prov",208,11,2,95,"TR","1:05 PM - 2:20 PM",785,860],["BLST 242-01/ MUSI 240-01",9,"Fire Music",121,22,2,3,"TR","10:05 AM - 11:20 AM",605,680],["POSC 351-01",35,"Politics Ordinary Life",274,17,2,22,"TR","1:05 PM - 2:20 PM",785,860],["PSYC 316-01",36,"Develop Social Cognition",46,17,2,83,"TR","2:35 PM - 3:50 PM",875,950],["ASTR 334-01",6,"Extrasolar Atmospheres",64,11,2,65,"MW","1:05 PM - 2:20 PM",785,860],["BLST 315-01/ FREN 352-01",9,"Africa Shoots Back",203,3,2,91,"T","2:35 PM - 5:20 PM",875,1040],["CLAS 240-01",12,"Ancient Environment",234,19,2,47,"MW","2:35 PM - 3:50 PM",875,950],["CLAS 293-01/ HIST 293-01",12,"Excavating Greek Life",9,13,2,54,"TR","1:05 PM - 2:20 PM",785,860],["ENGL 218-01",17,"War in Words: Lit of WWI",28,16,2,17,"TR","8:35 AM - 9:50 AM",515,590],["ENGL 314-01",17,"Fantasies of Realism",189,22,2,90,"TR","10:05 AM - 11:20 AM",605,680],["FREN 293-01",21,"Making Impressions",247,12,2,47,"MW","1:05 PM - 2:20 PM",785,860],["PHIL 451-01",33,"Rawls' Theory of Justice",229,17,2,80,"W","2:35 PM - 5:05 PM",875,1025],["POSC 376-01",35,"AI at War",78,13,2,105,"W","1:05 PM - 3:50 PM",785,950],["PSYC 202-01",36,"Identity Development",249,17,2,83,"TR","11:35 AM - 12:50 PM",695,770],["RELI 176-01",37,"Christianity - Evolution",23,17,2,16,"MW","1:05 PM - 2:20 PM",785,860],["FAMS 373-01/ SWAG 233-01",20,"Feminist Computing",239,15,2,54,"MW","2:35 PM - 3:50 PM",875,950],["ASLC 139-01/ HIST 139-01",5,"Intro Modern Middle East",187,20,2,51,"TR","10:05 AM - 11:20 AM",605,680],["LATI 217-01",27,"Intermediate Latin Prose",214,5,2,48,"TR","2:35 PM - 3:50 PM",875,950],["MATH 150-01",30,"Voting and Elections",98,24,2,94,"MWF","11:35 AM - 12:25 PM",695,745],["MATH 409-01",30,"The p-Adic Numbers",101,11,2,92,"TR","1:05 PM - 2:20 PM",785,860],["POSC 275-01",35,"Building Communities",163,12,2,82,"W","1:05 PM - 5:30 PM",785,1050],["SWAG 300-01",42,"Feminist Queer Research",165,4,2,53,"T","1:05 PM - 3:50 PM",785,950],["AAPI 462-01/ HIST 462-01",0,"Hawai'i",76,8,2,61,"W","2:35 PM - 5:35 PM",875,1055],["NEUR 213-01/ PSYC 213-01",32,"Neuro Systems/Behavior",131,27,2,66,"WF","1:05 PM - 2:20 PM",785,860],["POSC 277-01/ SWAG 277-01",35,"Democracy and Dissent",18,17,2,47,"TR","4:05 PM - 5:20 PM",965,1040],["EUST 213-01/ GERM 214-01",19,"All the Glitter and Gold",49,6,2,15,"MW","11:35 AM - 12:50 PM",695,770],["PHYS 345-01",34,"Fluids",282,8,2,61,"TR","10:05 AM - 11:20 AM",605,680],["NEUR 213-01L/ PSYC 213-01L",32,"Neuro Systems/Behavior",131,18,1,58,"W","2:35 PM - 5:00 PM",875,1020],["COSC 211-01",14,"Data Structures",164,12,2,69,"MW","11:35 AM - 12:50 PM",695,770],["COSC 283-01",14,"Networks",261,28,2,66,"MW","2:35 PM - 3:50 PM",875,950],["COSC 241-01",14,"Artificial Intelligence",24,30,2,66,"MW","8:35 AM - 9:50 AM",515,590],["THDA 310-01",43,"Rehearsal and Analysis",238,6,2,107,"TR","1:05 PM - 3:25 PM",785,925],["THDA 125H-01",43,"Vocal Freedom",238,13,2,101,"MWF","11:35 AM - 12:25 PM",695,745],["FREN 368-01",21,"Crisis of Narrative",183,7,2,20,"TR","11:35 AM - 12:50 PM",695,770],["ASTR 235-01L",6,"Astrophysics",64,10,1,65,"F","10:05 AM - 11:20 AM",605,680],["HIST 253-01/ LJST 263-01",26,"Islam and Modern State",286,18,2,51,"TR","4:05 PM - 5:20 PM",965,1040],["SPAN 201-01",40,"Spanish III",44,16,2,15,"MW","10:05 AM - 11:20 AM",605,680],["SPAN 201-02",40,"Spanish III",167,8,2,19,"TR","10:05 AM - 11:20 AM",605,680],["SPAN 201-01F",40,"Spanish III",44,3,0,56,"F","9:00 AM - 9:50 AM",540,590],["SPAN 201-03F",40,"Spanish III",44,5,0,56,"F","2:35 PM - 3:25 PM",875,925],["SPAN 202-01",40,"Spanish IV",44,11,2,15,"MW","8:35 AM - 9:50 AM",515,590],["SPAN 201-02F",40,"Spanish III",44,16,0,56,"F","10:05 AM - 10:55 AM",605,655],["SPAN 202-02",40,"Spanish IV",44,4,2,4,"MW","1:05 PM - 2:20 PM",785,860],["ASTR 235-01",6,"Astrophysics",64,10,2,65,"MW","10:05 AM - 10:55 AM",605,655],["BCBP 232-01/ PHYS 232-01",7,"Thermal Biophysics",34,15,2,80,"MW","11:35 AM - 12:50 PM",695,770],["SPAN 202-01F",40,"Spanish IV",44,11,0,46,"R","10:05 AM - 10:55 AM",605,655],["SPAN 202-02F",40,"Spanish IV",44,4,0,44,"R","11:35 AM - 12:25 PM",695,745],["ENGL 389-01/ FAMS 389-01",17,"Experimental Cinema",138,8,2,18,"R","1:05 PM - 3:35 PM",785,935],["ENGL 486-01/ FAMS 415-01",17,"Disability Media",224,11,2,42,"TR","10:05 AM - 11:20 AM",605,680],["SPAN 101-01F",40,"Spanish I",63,6,0,44,"F","9:00 AM - 9:50 AM",540,590],["SPAN 102-01F",40,"Spanish II",250,11,0,20,"R","9:00 AM - 9:50 AM",540,590],["SPAN 101-02F",40,"Spanish I",63,9,0,44,"F","10:05 AM - 10:55 AM",605,655],["LLAS 325-01/ SPAN 325-01",29,"Art as Protest",248,8,2,89,"TR","1:05 PM - 2:20 PM",785,860],["SPAN 102-02F",40,"Spanish II",250,9,0,44,"R","1:30 PM - 2:20 PM",810,860],["PHYS 343-01",34,"Dynamics",133,18,2,61,"MW","10:05 AM - 11:20 AM",605,680],["RUSS 229-01",38,"Ghosts on Page & Stage",39,7,2,102,"MW","11:35 AM - 12:50 PM",695,770],["ECON 210-01",15,"Environ/Natural Res Econ",153,25,2,96,"TR","11:35 AM - 12:50 PM",695,770],["ECON 210-01F",15,"Environ/Natural Res Econ",153,25,0,24,"F","11:35 AM - 12:25 PM",695,745],["NEUR 213-02L/ PSYC 213-02L",32,"Neuro Systems/Behavior",131,9,1,58,"F","2:35 PM - 5:00 PM",875,1020],["CHEM 260-01",10,"Chemistry in Society",158,22,2,88,"TR","11:35 AM - 12:50 PM",695,770],["CHIN 401-01",11,"Fourth-Year Chinese I",283,2,2,102,"MWF","1:30 PM - 2:20 PM",810,860],["AMST 124-02/ EDST 124-02",1,"Educational Empire",259,13,2,52,"WF","11:35 AM - 12:50 PM",695,770],["EDST 144-01",16,"History of Assessment",107,12,2,104,"TR","1:05 PM - 2:20 PM",785,860],["ENGL 321-01",17,"Writing Under Duress",141,6,2,17,"M","1:05 PM - 4:05 PM",785,965],["ENGL 398-01",17,"The Lyric Essay",160,5,2,102,"R","1:05 PM - 4:00 PM",785,960],["AMST 124-01/ EDST 124-01",1,"Educational Empire",27,17,2,52,"MW","10:05 AM - 11:20 AM",605,680],["ARHA 331-01",4,"GOYA!",206,5,2,42,"T","1:05 PM - 3:40 PM",785,940],["COSC 113-01",14,"Programming & Proofs",25,5,2,66,"MW","10:05 AM - 10:55 AM",605,655],["COSC 113L-01",14,"Programming & Proofs Lab",25,5,1,66,"F","10:05 AM - 10:55 AM",605,655],["ENGL 331-01",17,"Poetry II: Docupoetics",13,5,2,57,"MW","10:05 AM - 11:20 AM",605,680],["ANTH 284-01/ ASLC 284-01",2,"Global Hlth Middle East",54,19,2,61,"TR","1:05 PM - 2:20 PM",785,860],["ARCH 302-01/ ARHA 302-01",3,"Building Bridges",92,11,2,29,"W","1:05 PM - 4:05 PM",785,965],["ARHA 127-01",4,"Black & White Photograph",94,12,2,30,"MW","1:05 PM - 4:05 PM",785,965],["EDST 253-01/ GERM 253-01",16,"Languages Unlimited",99,9,2,49,"TR","10:05 AM - 11:20 AM",605,680],["RELI 228-01",37,"Is Religion the Future?",60,1,2,16,"TR","2:35 PM - 3:50 PM",875,950],["HIST 108-01",26,"Historical Fiction",235,13,2,54,"TR","2:35 PM - 3:50 PM",875,950],["THDA 273-01",43,"Musicals Worlds",243,6,2,101,"M","8:50 AM - 11:20 AM",530,680],["PHIL 302-01",33,"Well-Being/Well-Lived",147,18,2,57,"TR","11:35 AM - 12:50 PM",695,770],["ARCH 105-01/ ARHA 105-01",3,"Space in Translation",271,8,2,12,"TR","1:05 PM - 4:05 PM",785,965],["ENGL 127-01",17,"Writing About Home",8,17,2,4,"TR","2:35 PM - 3:50 PM",875,950],["BCBP 335H-01/ BIOL 335H-01/ CHEM 335H-01",7,"Methods in Biochemistry",201,15,2,67,"R","1:05 PM - 5:05 PM",785,1025],["AAPI 210-01/ ENGL 210-01",0,"Intro to Asian Amer Lit",275,15,2,36,"MW","11:35 AM - 12:50 PM",695,770],["ENGL 315-01/ RUSS 225-01",17,"Nabokov and the Art of Reading",268,25,2,32,"TR","1:05 PM - 2:20 PM",785,860],["RUSS 201-01",38,"Second-Year Russian I",0,6,2,102,"MTWRF","10:05 AM - 10:55 AM",605,655],["FYSE 105-01",22,"Staying with the Trouble",176,15,2,47,"MW","8:35 AM - 9:50 AM",515,590],["FYSE 101-01",22,"Ancestral Futures",222,15,2,14,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 103-01",22,"Asia in the Europ. Mind",277,14,2,54,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 117-03",22,"Progress?",48,13,2,51,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 118-01",22,"Prosecuting Deviants",240,14,2,24,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 104-02",22,"Earth’s Future",198,15,2,10,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 125-01",22,"Thinking Through Improv",66,14,2,3,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 101-02",22,"Ancestral Futures",181,15,2,15,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 110-01",22,"Emily Dickinson's World",124,13,2,36,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 111-01",22,"Listening",123,14,2,2,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 112-01",22,"Manifestos",6,15,2,51,"MW","8:35 AM - 9:50 AM",515,590],["FYSE 117-02",22,"Progress?",171,14,2,22,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 117-05",22,"Progress?",134,14,2,105,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 121-01",22,"Blk Wmn Bios & Memoirs",116,14,2,26,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 108-01",22,"Books on the Brain",251,15,2,89,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 111-02",22,"Listening",135,15,2,90,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 113-01",22,"Modernity's Shadow",202,14,2,54,"TR","8:35 AM - 9:50 AM",515,590],["FYSE 115-01",22,"Places",75,15,2,40,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 117-01",22,"Progress?",216,14,2,13,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 117-04",22,"Progress?",15,14,2,47,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 104-03",22,"Earth’s Future",213,15,2,11,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 123-01",22,"Revolution!",286,14,2,52,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 123-02",22,"Revolution!",187,15,2,4,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 104-01",22,"Earth’s Future",29,15,2,9,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 124-01",22,"Value of Nature",227,15,2,61,"TR","11:35 AM - 12:50 PM",695,770],["BCBP 335H-02/ BIOL 335H-02/ CHEM 335H-02",7,"Methods in Biochemistry",201,12,2,67,"W","1:05 PM - 5:05 PM",785,1025],["BCBP 335H-03/ BIOL 335H-03/ CHEM 335H-03",7,"Methods in Biochemistry",201,14,2,67,"T","1:05 PM - 5:05 PM",785,1025],["FYSE 102-01",22,"Family History",80,15,2,17,"TR","11:35 AM - 12:50 PM",695,770],["FYSE 119-01",22,"Reading Asian America",237,13,2,25,"TR","11:35 AM - 12:50 PM",695,770],["RUSS 226-01",38,"Agony of Comedy: Gogol",39,4,2,15,"MW","2:35 PM - 3:50 PM",875,950],["AMST 317-01/ ENGL 417-01",1,"Salem 1692",174,7,2,82,"TR","10:05 AM - 11:20 AM",605,680],["FYSE 131-01",22,"Francophone African Lit",203,11,2,19,"TR","11:35 AM - 12:50 PM",695,770],["BCBP 330-02/ BIOL 330-02/ CHEM 330-02",7,"Biochemistry I",32,21,2,89,"MW","10:05 AM - 11:20 AM",605,680],["BCBP 330-02F/ BIOL 330-02F/ CHEM 330-02F",7,"Biochemistry I",32,21,0,89,"F","10:05 AM - 10:55 AM",605,655],["MUSI 115-02",31,"Dissecting the DAW",279,14,2,2,"TR","10:05 AM - 11:20 AM",605,680],["MUSI 119-01",31,"Making a Superstar",19,21,2,3,"TR","2:35 PM - 3:50 PM",875,950],["ENGL 127-02",17,"Writing About Home",8,15,2,19,"MW","11:35 AM - 12:50 PM",695,770],["SOCI 205-01",39,"Mass Incarceration",180,20,2,17,"TR","4:05 PM - 5:20 PM",965,1040],["SOCI 201-01",39,"Medical Sociology",156,27,2,23,"MW","11:35 AM - 12:50 PM",695,770],["FYSE 126-01",22,"Space and Place",276,14,2,60,"TR","11:35 AM - 12:50 PM",695,770],["PHIL 111-02",33,"Philosophical Questions",179,20,2,47,"MW","11:35 AM - 12:50 PM",695,770],["PHYS 107-01",34,"Physics of Light",157,9,2,89,"MW","2:35 PM - 3:50 PM",875,950],["ANTH 221-01",2,"Sex/Gender Ethnography",136,7,2,60,"TR","2:35 PM - 3:50 PM",875,950],["ANTH 242-01",2,"Prison Worlds",136,23,2,24,"MW","1:05 PM - 2:20 PM",785,860],["ENST 266-01/ SOCI 266-01",18,"Env. Sociology",175,17,2,82,"MW","11:35 AM - 12:50 PM",695,770],["ENST 398-01/ RUSS 398-01/ SOCI 398-01",18,"Env Society in Russia",175,2,2,69,"MW","2:35 PM - 3:50 PM",875,950],["PHIL 233-01",33,"Philosophy of Mind",179,19,2,55,"MW","2:35 PM - 3:50 PM",875,950],["POSC 463-01",35,"Authoritarianism Lat Am",33,12,2,56,"MW","10:05 AM - 11:20 AM",605,680],["BLST 117-01/ SWAG 117-01",9,"Race & Amer. Imagination",159,14,2,25,"TR","10:05 AM - 11:20 AM",605,680],["AMST 308-01/ EDST 308-01/ SOCI 308-01",1,"Gender and Education",162,4,2,55,"MW","10:05 AM - 11:20 AM",605,680],["ARHA 167-01",4,"Intro to Studio Praxis",62,1,2,38,"TR","1:05 PM - 4:05 PM",785,965],["AAPI 241-01/ LJST 241-01",0,"Law, Indigenous Nations",173,12,2,57,"TR","1:05 PM - 2:20 PM",785,860],["ENGL 323-01",17,"The Lyric Poem",207,2,2,56,"TR","10:05 AM - 11:20 AM",605,680],["ARHA 295-01",4,"Ground Without Place",284,6,2,38,"MW","9:00 AM - 11:00 AM",540,660],["AAPI 247-01/ LJST 247-01",0,"Enemy Alien",173,19,2,14,"TR","8:35 AM - 9:50 AM",515,590],["ENGL 112-01",17,"Writing About Food",8,15,2,20,"MW","1:05 PM - 2:20 PM",785,860],["MATH 111-05",30,"Intro to the Calculus",242,10,2,94,"MWF","1:30 PM - 2:20 PM",810,860],["POSC 363-01",35,"Geopolitics & US Policy",223,5,2,22,"W","1:05 PM - 3:35 PM",785,935],["ENGL 118-01",17,"Writing About Nature",0,15,2,44,"MW","2:35 PM - 3:50 PM",875,950],["ASLC 134-01/ MUSI 134-01",5,"Intro to \"Asia\" perf art",145,5,2,1,"MW","1:05 PM - 2:20 PM",785,860],["MUSI 185-185",31,"Guitar Cultures",145,4,2,1,"MW","10:05 AM - 11:20 AM",605,680],["HIST 229-01/ RELI 225-01/ SWAG 229-01",26,"The Virgin Mary",146,5,2,56,"TR","1:05 PM - 2:20 PM",785,860],["ECON 498-02",15,"Senior Honors",56,13,2,24,"R","2:35 PM - 3:50 PM",875,950],["EDST 360-01/ HIST 404-01",16,"Comp School Choice",105,1,2,0,"R","1:05 PM - 4:05 PM",785,965],["AAPI 262-01/ AMST 262-01/ EDST 262-01",0,"Decolonial Undergrounds",217,19,2,60,"TR","1:05 PM - 2:20 PM",785,860],["AAPI 244-01/ AMST 244-01/ EDST 244-01",0,"Indigenous Education",217,8,2,54,"TR","4:05 PM - 5:20 PM",965,1040],["AAPI 231-01/ SOCI 231-01",0,"Immigration, Cultural Ch",244,14,2,52,"TR","10:05 AM - 11:20 AM",605,680],["MATH 150-02",30,"Voting and Elections",98,9,2,92,"MWF","1:30 PM - 2:20 PM",810,860]]};
+
+    /**
+     * =========================================================================
+     * CONSTANTS & HYDRATION
+     * =========================================================================
+     */
+    const DAY_CODE_MAP = {
+      M: 'Monday',
+      T: 'Tuesday',
+      W: 'Wednesday',
+      R: 'Thursday',
+      F: 'Friday',
+      S: 'Saturday',
+      U: 'Sunday'
+    };
+
+    const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+
+    const FORMAT_BADGE_STYLES = {
+      Lecture: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+      Laboratory: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      Discussion: 'bg-amber-50 text-amber-800 border-amber-200'
+    };
+
+    const COURSE_LEVELS = [100, 200, 300, 400];
+
+    function parseCourseLevels(code) {
+      const matches = Array.from(String(code || '').matchAll(/[A-Z]+\s+(\d{3})/gi));
+      const levels = [];
+      matches.forEach(m => {
+        const num = parseInt(m[1], 10);
+        const lvl = Math.floor(num / 100) * 100;
+        if (lvl >= 100 && !levels.includes(lvl)) {
+          levels.push(lvl);
+        }
+      });
+      const primaryLevel = levels.length > 0 ? levels[0] : 100;
+      return {
+        level: primaryLevel,
+        levels: levels.length > 0 ? levels : [primaryLevel]
+      };
+    }
+
+    function hydrateCompressedDataset(payload) {
+      return payload.rows.map((r, idx) => {
+        const [code, deptIdx, title, instIdx, enrollment, fmtIdx, locIdx, dayChars, timeStr, startMin, endMin] = r;
+        const days = String(dayChars || '')
+          .split('')
+          .map(ch => DAY_CODE_MAP[ch])
+          .filter(Boolean);
+
+        // Extract all subject prefixes in cross-listed course codes (e.g., "ARCH 122-01/ ARHA 122-01" -> ["ARCH", "ARHA"])
+        const primaryDept = payload.depts[deptIdx] || 'OTHER';
+        const matchedDepts = Array.from(new Set(
+          String(code).split('/').map(part => {
+            const m = part.trim().match(/^([A-Z]+)/);
+            return m ? m[1] : null;
+          }).filter(Boolean)
+        ));
+        if (!matchedDepts.includes(primaryDept)) {
+          matchedDepts.unshift(primaryDept);
+        }
+
+        const primaryDivision = getDivisionForSubject(primaryDept);
+        const divisions = Array.from(new Set(matchedDepts.map(getDivisionForSubject)));
+        const { level, levels } = parseCourseLevels(code);
+
+        const rawInst = payload.instructors[instIdx] || '';
+        const cleanInst = rawInst.replace(/\n+/g, ', ').trim();
+
+        return {
+          id: `sec_${idx}`,
+          code,
+          dept: primaryDept,
+          depts: matchedDepts,
+          division: primaryDivision,
+          divisions,
+          level,
+          levels,
+          title,
+          instructor: cleanInst,
+          enrollment: Number(enrollment) || 0,
+          format: payload.formats[fmtIdx] || 'Lecture',
+          location: payload.locations[locIdx] || '',
+          dayChars,
+          days,
+          timeStr,
+          startMin: Number(startMin),
+          endMin: Number(endMin)
+        };
+      });
+    }
+
+    /**
+     * =========================================================================
+     * APPLICATION STATE
+     * =========================================================================
+     */
+    let state = {
+      period: FALL_2026_DATA.period,
+      sections: [],
+      isCustomDataset: false,
+      currentView: 'report',       // 'report' | 'trends' | 'directory'
+      timeWindow: 'standard',      // 'standard' (8:00 AM - 5:00 PM) | 'fullday' (8:00 AM - 10:00 PM)
+      includeSunday: false,
+      heatmapShading: true,
+      miniChartDay: 'Wednesday',
+      matchMode: 'primary',        // 'primary' | 'any' (for cross-listed courses)
+      filters: {
+        division: 'ALL',
+        format: 'ALL',
+        dept: 'ALL',
+        location: 'ALL',
+        size: 'ALL',
+        levels: []                 // [] or all 4 selected = All Levels; subset = multi-selected levels
+      },
+      selectedSlot: {
+        day: 'Wednesday',
+        startMin: 13 * 60 + 30 // 1:30 PM (Peak slot: 65 sections)
+      },
+      directorySort: {
+        key: 'code',
+        dir: 'asc'
+      }
+    };
+
+    /**
+     * =========================================================================
+     * TIME & MATRIX CALCULATION ENGINE
+     * =========================================================================
+     */
+    function formatMinutesToTime(totalMins) {
+      const hours24 = Math.floor(totalMins / 60);
+      const mins = totalMins % 60;
+      const period = hours24 >= 12 ? 'PM' : 'AM';
+      let hours12 = hours24 % 12;
+      if (hours12 === 0) hours12 = 12;
+      return `${hours12}:${String(mins).padStart(2, '0')} ${period}`;
+    }
+
+    function getActiveDays() {
+      const days = [...WEEKDAYS];
+      if (state.includeSunday) {
+        days.push('Sunday');
+      }
+      return days;
+    }
+
+    function getTimeSlots() {
+      const startHour = 8;
+      const endHour = state.timeWindow === 'standard' ? 17 : 22;
+      const slots = [];
+      for (let m = startHour * 60; m <= endHour * 60; m += 30) {
+        slots.push({
+          startMin: m,
+          endMin: m + 30,
+          label: formatMinutesToTime(m)
+        });
+      }
+      return slots;
+    }
+
+    function matchesDivision(sec, division) {
+      if (division === 'ALL') return true;
+      if (state.matchMode === 'primary') {
+        return sec.division === division;
+      }
+      return sec.divisions.includes(division);
+    }
+
+    function matchesDept(sec, dept) {
+      if (dept === 'ALL') return true;
+      if (state.matchMode === 'primary') {
+        return sec.dept === dept;
+      }
+      return sec.depts.includes(dept) || sec.dept === dept;
+    }
+
+    function matchesCourseLevel(sec, selectedLevels) {
+      if (!selectedLevels || selectedLevels.length === 0 || selectedLevels.length >= COURSE_LEVELS.length) {
+        return true;
+      }
+      if (state.matchMode === 'primary') {
+        return selectedLevels.includes(sec.level);
+      }
+      return sec.levels.some(lvl => selectedLevels.includes(lvl));
+    }
+
+    function sectionHasSpecificLevel(sec, lvl) {
+      if (state.matchMode === 'primary') {
+        return sec.level === lvl;
+      }
+      return sec.levels.includes(lvl);
+    }
+
+    function getActiveCourseLevelsSorted() {
+      const sel = state.filters.levels || [];
+      if (sel.length === 0 || sel.length >= COURSE_LEVELS.length) return [];
+      return [...sel].sort((a, b) => a - b);
+    }
+
+    /**
+     * Enrollment Size Filter Helpers (Increments of 10)
+     */
+    function getEnrollmentSizeBuckets(sectionsList) {
+      const maxEnrl = sectionsList.reduce((m, s) => Math.max(m, Number(s.enrollment) || 0), 49);
+      const maxDecade = Math.max(40, Math.floor(maxEnrl / 10) * 10);
+
+      const buckets = [];
+      for (let low = 0; low <= maxDecade; low += 10) {
+        const high = low + 9;
+        const displayLow = low === 0 ? 1 : low;
+        const label = `${displayLow}–${high} students`;
+        const id = `${low}-${high}`;
+        if (low >= 50) {
+          const hasAny = sectionsList.some(s => (Number(s.enrollment) || 0) >= low && (Number(s.enrollment) || 0) <= high);
+          if (!hasAny) continue;
+        }
+        buckets.push({ id, label, min: low, max: high });
+      }
+      return buckets;
+    }
+
+    function matchesEnrollmentSize(sec, sizeFilter) {
+      if (!sizeFilter || sizeFilter === 'ALL') return true;
+      const enrl = Number(sec.enrollment) || 0;
+      if (sizeFilter === '50+') return enrl >= 50;
+      const [minStr, maxStr] = sizeFilter.split('-');
+      const min = parseInt(minStr, 10);
+      const max = parseInt(maxStr, 10);
+      return enrl >= min && enrl <= max;
+    }
+
+    function getEnrollmentSizeLabel(sizeFilter) {
+      if (!sizeFilter || sizeFilter === 'ALL') return 'All Enrollment Sizes';
+      if (sizeFilter === '50+') return '50+ students';
+      const [minStr, maxStr] = sizeFilter.split('-');
+      const min = parseInt(minStr, 10);
+      const max = parseInt(maxStr, 10);
+      return `${min === 0 ? 1 : min}–${max} students`;
+    }
+
+    function getFilteredSections() {
+      return state.sections.filter(sec => {
+        if (!matchesDivision(sec, state.filters.division)) return false;
+        if (!matchesDept(sec, state.filters.dept)) return false;
+        if (!matchesCourseLevel(sec, state.filters.levels)) return false;
+        if (!matchesEnrollmentSize(sec, state.filters.size)) return false;
+        if (state.filters.format !== 'ALL' && sec.format !== state.filters.format) return false;
+        if (state.filters.location !== 'ALL' && sec.location !== state.filters.location) return false;
+        return true;
+      });
+    }
+
+    /**
+     * Exact overlap formula verified against "Sections in Session by Time - Fall 2026.pdf":
+     * A section is in session during the 30-minute block [slotStart, slotStart + 30)
+     * iff: section.startMin < (slotStart + 30) && section.endMin > slotStart
+     */
+    function getSectionsInSlot(sections, day, slotStartMin) {
+      const slotEndMin = slotStartMin + 30;
+      return sections.filter(sec =>
+        sec.days.includes(day) &&
+        sec.startMin < slotEndMin &&
+        sec.endMin > slotStartMin
+      );
+    }
+
+    function computeScheduleMatrix(filteredSections) {
+      const slots = getTimeSlots();
+      const days = getActiveDays();
+      let maxCount = 0;
+      let peakInfo = { count: 0, day: 'Wednesday', timeLabel: '1:30 PM', startMin: 810 };
+
+      const rows = slots.map(slot => {
+        const counts = {};
+        days.forEach(day => {
+          const active = getSectionsInSlot(filteredSections, day, slot.startMin);
+          const count = active.length;
+          counts[day] = count;
+          if (count > maxCount) {
+            maxCount = count;
+            peakInfo = {
+              count,
+              day,
+              timeLabel: slot.label,
+              startMin: slot.startMin
+            };
+          }
+        });
+        return {
+          ...slot,
+          counts
+        };
+      });
+
+      return { rows, days, maxCount, peakInfo };
+    }
+
+    function getCellHeatStyle(count, maxCount) {
+      if (!state.heatmapShading || count === 0 || maxCount === 0) {
+        return 'bg-white text-slate-800';
+      }
+      const ratio = count / maxCount;
+      if (ratio >= 0.85) return 'bg-indigo-600 text-white font-bold';
+      if (ratio >= 0.65) return 'bg-indigo-400 text-white font-semibold';
+      if (ratio >= 0.45) return 'bg-indigo-200 text-indigo-950 font-semibold';
+      if (ratio >= 0.25) return 'bg-indigo-100 text-indigo-900';
+      return 'bg-indigo-50/70 text-slate-800';
+    }
+
+    /**
+     * =========================================================================
+     * RENDERING PIPELINE
+     * =========================================================================
+     */
+    function renderAll() {
+      syncFilterControls();
+      const filtered = getFilteredSections();
+      const matrixData = computeScheduleMatrix(filtered);
+
+      renderReportCard(filtered, matrixData);
+      renderMiniCurveChart(matrixData);
+      renderSlotInspector(filtered);
+
+      if (state.currentView === 'trends') {
+        renderTrendsView(filtered, matrixData);
+      } else if (state.currentView === 'directory') {
+        renderDirectoryTable(filtered);
+      }
+
+      if (window.lucide) {
+        lucide.createIcons();
+      }
+    }
+
+    function syncFilterControls() {
+      // Match Mode buttons
+      const btnPrimary = document.getElementById('btn-match-primary');
+      const btnAny = document.getElementById('btn-match-any');
+      btnPrimary.className = state.matchMode === 'primary'
+        ? 'px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white text-slate-900 shadow-2xs transition'
+        : 'px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition';
+      btnAny.className = state.matchMode === 'any'
+        ? 'px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white text-slate-900 shadow-2xs transition'
+        : 'px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition';
+
+      // 1. Academic Division Dropdown with dynamic counts
+      const divSelect = document.getElementById('filter-division');
+      const divOptions = [
+        `<option value="ALL">All Divisions (${state.sections.length})</option>`
+      ];
+      DIVISION_ORDER.forEach(divName => {
+        const cnt = state.sections.filter(s => matchesDivision(s, divName)).length;
+        divOptions.push(`<option value="${escapeHtml(divName)}">${escapeHtml(divName)} (${cnt})</option>`);
+      });
+      divSelect.innerHTML = divOptions.join('');
+      divSelect.value = state.filters.division;
+
+      // Division subject list hint
+      const hintEl = document.getElementById('division-subjects-hint');
+      if (state.filters.division !== 'ALL') {
+        const subjs = DIVISION_SUBJECTS[state.filters.division] || [];
+        hintEl.textContent = `${state.filters.division} subjects: ${subjs.join(', ')}`;
+      } else {
+        hintEl.textContent = '';
+      }
+
+      // 2. Subject / Dept Dropdown (Cascades from selected Division)
+      const deptSelect = document.getElementById('filter-dept');
+      const availableDeptsSet = new Set();
+      state.sections.forEach(sec => {
+        if (state.filters.division === 'ALL') {
+          if (state.matchMode === 'primary') {
+            availableDeptsSet.add(sec.dept);
+          } else {
+            sec.depts.forEach(d => availableDeptsSet.add(d));
+          }
+        } else {
+          const allowedInDiv = new Set(DIVISION_SUBJECTS[state.filters.division] || []);
+          if (state.matchMode === 'primary') {
+            if (allowedInDiv.has(sec.dept)) availableDeptsSet.add(sec.dept);
+          } else {
+            sec.depts.forEach(d => {
+              if (allowedInDiv.has(d)) availableDeptsSet.add(d);
+            });
+          }
+        }
+      });
+      const sortedDepts = Array.from(availableDeptsSet).sort();
+      const allDeptLabel = state.filters.division === 'ALL'
+        ? `All Subjects (${sortedDepts.length})`
+        : `All ${state.filters.division} Subjects (${sortedDepts.length})`;
+      deptSelect.innerHTML = `<option value="ALL">${escapeHtml(allDeptLabel)}</option>` +
+        sortedDepts.map(d => {
+          const cnt = state.sections.filter(s => matchesDivision(s, state.filters.division) && matchesDept(s, d)).length;
+          return `<option value="${escapeHtml(d)}">${escapeHtml(d)} (${cnt})</option>`;
+        }).join('');
+      if (!sortedDepts.includes(state.filters.dept)) {
+        state.filters.dept = 'ALL';
+      }
+      deptSelect.value = state.filters.dept;
+
+      // 2b. Enrollment Size Dropdown (Increments of 10 with dynamic counts)
+      const sizeSelect = document.getElementById('filter-size');
+      const sectionsBeforeSize = state.sections.filter(sec => {
+        if (!matchesDivision(sec, state.filters.division)) return false;
+        if (!matchesDept(sec, state.filters.dept)) return false;
+        if (!matchesCourseLevel(sec, state.filters.levels)) return false;
+        if (state.filters.format !== 'ALL' && sec.format !== state.filters.format) return false;
+        if (state.filters.location !== 'ALL' && sec.location !== state.filters.location) return false;
+        return true;
+      });
+
+      const sizeBuckets = getEnrollmentSizeBuckets(state.sections);
+      const count50Plus = sectionsBeforeSize.filter(s => (Number(s.enrollment) || 0) >= 50).length;
+
+      let sizeOptionsHtml = `<option value="ALL">All Enrollment Sizes (${sectionsBeforeSize.length})</option>`;
+      sizeBuckets.forEach(b => {
+        const cnt = sectionsBeforeSize.filter(s => matchesEnrollmentSize(s, b.id)).length;
+        sizeOptionsHtml += `<option value="${escapeHtml(b.id)}">${escapeHtml(b.label)} (${cnt})</option>`;
+        if (b.id === '40-49') {
+          sizeOptionsHtml += `<option value="50+">50+ students — All 50+ (${count50Plus})</option>`;
+        }
+      });
+      sizeSelect.innerHTML = sizeOptionsHtml;
+      const validSizeValues = new Set(['ALL', '50+', ...sizeBuckets.map(b => b.id)]);
+      if (!validSizeValues.has(state.filters.size)) {
+        state.filters.size = 'ALL';
+      }
+      sizeSelect.value = state.filters.size;
+
+      // 3. Location Dropdown
+      const locSelect = document.getElementById('filter-loc');
+      const allLocs = Array.from(new Set(state.sections.map(s => s.location).filter(Boolean))).sort();
+      locSelect.innerHTML = `<option value="ALL">All Locations (${allLocs.length})</option>` +
+        allLocs.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
+      locSelect.value = allLocs.includes(state.filters.location) ? state.filters.location : 'ALL';
+
+      // 3b. Course Level Multi-Select Pills (100, 200, 300, 400)
+      const sectionsBeforeLevel = state.sections.filter(sec => {
+        if (!matchesDivision(sec, state.filters.division)) return false;
+        if (!matchesDept(sec, state.filters.dept)) return false;
+        if (!matchesEnrollmentSize(sec, state.filters.size)) return false;
+        if (state.filters.format !== 'ALL' && sec.format !== state.filters.format) return false;
+        if (state.filters.location !== 'ALL' && sec.location !== state.filters.location) return false;
+        return true;
+      });
+
+      const levelPillsEl = document.getElementById('course-level-pills');
+      const activeLevels = getActiveCourseLevelsSorted();
+      const levelButtonsHtml = COURSE_LEVELS.map(lvl => {
+        const isChecked = activeLevels.includes(lvl);
+        const cnt = sectionsBeforeLevel.filter(s => sectionHasSpecificLevel(s, lvl)).length;
+        return `
+          <button
+            type="button"
+            onclick="toggleCourseLevel(${lvl})"
+            aria-pressed="${isChecked}"
+            title="Toggle ${lvl}-level courses (${cnt} sections)"
+            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-semibold border transition select-none ${
+              isChecked
+                ? 'bg-purple-900 text-white border-purple-900 shadow-2xs'
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300 hover:text-purple-950'
+            }">
+            <span class="w-3 h-3 rounded-xs flex items-center justify-center border text-[9px] leading-none ${
+              isChecked
+                ? 'bg-white text-purple-900 border-white font-bold'
+                : 'border-slate-300 text-transparent'
+            }">✓</span>
+            <span>${lvl}</span>
+            <span class="font-mono text-[10px] ${isChecked ? 'text-purple-200' : 'text-slate-400'}">(${cnt})</span>
+          </button>
+        `;
+      }).join('');
+
+      const clearLevelsBtn = activeLevels.length > 0
+        ? `<button type="button" onclick="clearCourseLevels()" class="px-1.5 py-0.5 rounded-lg text-[10px] font-semibold text-purple-800 hover:bg-purple-100 transition">All</button>`
+        : '';
+
+      levelPillsEl.innerHTML = levelButtonsHtml + clearLevelsBtn;
+
+      // 4. Format Pills with dynamic counts (respecting division, dept, level, size, location filters)
+      const baseFiltered = state.sections.filter(sec => {
+        if (!matchesDivision(sec, state.filters.division)) return false;
+        if (!matchesDept(sec, state.filters.dept)) return false;
+        if (!matchesCourseLevel(sec, state.filters.levels)) return false;
+        if (!matchesEnrollmentSize(sec, state.filters.size)) return false;
+        if (state.filters.location !== 'ALL' && sec.location !== state.filters.location) return false;
+        return true;
+      });
+      const formats = ['ALL', 'Lecture', 'Laboratory', 'Discussion'];
+      const pillsEl = document.getElementById('format-pills');
+      pillsEl.innerHTML = formats.map(fmt => {
+        const count = fmt === 'ALL'
+          ? baseFiltered.length
+          : baseFiltered.filter(s => s.format === fmt).length;
+        const label = fmt === 'ALL' ? 'All Formats' : fmt;
+        const active = state.filters.format === fmt;
+        return `
+          <button onclick="setFormatFilter('${fmt}')" class="px-2.5 py-1 rounded-xl text-xs font-semibold transition border ${
+            active
+              ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-900'
+          }">
+            ${label} <span class="font-mono text-[11px] opacity-75">(${count})</span>
+          </button>
+        `;
+      }).join('');
+
+      // Time Window buttons
+      const btnStd = document.getElementById('btn-window-standard');
+      const btnFull = document.getElementById('btn-window-fullday');
+      btnStd.className = state.timeWindow === 'standard'
+        ? 'px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white text-slate-900 shadow-2xs transition'
+        : 'px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition';
+      btnFull.className = state.timeWindow === 'fullday'
+        ? 'px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white text-slate-900 shadow-2xs transition'
+        : 'px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition';
+
+      // Reset filters button visibility
+      const hasFilters =
+        state.filters.division !== 'ALL' ||
+        state.filters.format !== 'ALL' ||
+        state.filters.dept !== 'ALL' ||
+        getActiveCourseLevelsSorted().length > 0 ||
+        state.filters.size !== 'ALL' ||
+        state.filters.location !== 'ALL';
+      document.getElementById('btn-clear-filters').classList.toggle('hidden', !hasFilters);
+    }
+
+    function renderReportCard(filteredSections, matrixData) {
+      const { rows, days, maxCount, peakInfo } = matrixData;
+
+      // Update Header Subtitle
+      const filterNotes = [];
+      if (state.filters.division !== 'ALL') {
+        const modeTag = state.matchMode === 'any' ? ' (incl. cross-listed)' : '';
+        filterNotes.push(`${state.filters.division}${modeTag}`);
+      }
+      if (state.filters.dept !== 'ALL') filterNotes.push(state.filters.dept);
+      const activeLevels = getActiveCourseLevelsSorted();
+      if (activeLevels.length > 0) filterNotes.push(`Level: ${activeLevels.join(', ')}`);
+      if (state.filters.size !== 'ALL') filterNotes.push(`Enrollment: ${getEnrollmentSizeLabel(state.filters.size)}`);
+      if (state.filters.format !== 'ALL') filterNotes.push(state.filters.format);
+      if (state.filters.location !== 'ALL') filterNotes.push(state.filters.location);
+
+      const filterSuffix = filterNotes.length > 0 ? ` · ${filterNotes.join(' · ')}` : '';
+      document.getElementById('report-subtitle').innerHTML =
+        `${escapeHtml(state.period)} schedule &nbsp;&middot;&nbsp; <span class="font-semibold text-slate-900">${filteredSections.length} sections</span>${escapeHtml(filterSuffix)}`;
+
+      document.getElementById('legend-peak-text').textContent = `Peak (${maxCount})`;
+      document.getElementById('report-peak-summary').textContent =
+        maxCount > 0 ? `Peak: ${peakInfo.count} sections (${peakInfo.day} @ ${peakInfo.timeLabel})` : 'No active sections';
+
+      // Table Head
+      const thead = document.getElementById('report-table-head');
+      thead.innerHTML = `
+        <th class="py-2.5 px-3 text-left font-bold text-slate-900 w-28">Time:</th>
+        ${days.map(day => `
+          <th class="py-2.5 px-3 text-right font-bold text-slate-900">${day}</th>
+        `).join('')}
+      `;
+
+      // Table Body
+      const tbody = document.getElementById('report-table-body');
+      tbody.innerHTML = rows.map(row => {
+        const isSelectedRow = row.startMin === state.selectedSlot.startMin;
+        return `
+          <tr class="${isSelectedRow ? 'bg-slate-50/90' : 'hover:bg-slate-50/50'}">
+            <td class="py-2 px-3 text-left font-sans font-semibold text-slate-800 whitespace-nowrap border-r border-slate-200/80">
+              ${row.label}
+            </td>
+            ${days.map(day => {
+              const count = row.counts[day] || 0;
+              const isSelectedCell = state.selectedSlot.day === day && state.selectedSlot.startMin === row.startMin;
+              const heatCls = getCellHeatStyle(count, maxCount);
+              const ringCls = isSelectedCell ? 'ring-2 ring-inset ring-slate-900 font-bold' : '';
+              return `
+                <td
+                  onclick="selectSlot('${day}', ${row.startMin})"
+                  title="${day} ${row.label}: ${count} section${count === 1 ? '' : 's'} in session (click to inspect)"
+                  class="report-cell py-2 px-3 text-right cursor-pointer select-none ${heatCls} ${ringCls}">
+                  ${count}
+                </td>
+              `;
+            }).join('')}
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderMiniCurveChart(matrixData) {
+      const { rows, days, maxCount } = matrixData;
+      if (!days.includes(state.miniChartDay)) {
+        state.miniChartDay = days[0] || 'Monday';
+      }
+
+      // Day Selector Pills
+      const selectorEl = document.getElementById('mini-chart-day-selector');
+      selectorEl.innerHTML = days.map(day => {
+        const active = state.miniChartDay === day;
+        return `
+          <button onclick="setMiniChartDay('${day}')" class="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
+            active ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+          }">
+            ${day.slice(0, 3)}
+          </button>
+        `;
+      }).join('');
+
+      // Bar Chart
+      const chartEl = document.getElementById('mini-curve-chart');
+      const safeMax = Math.max(maxCount, 1);
+      chartEl.innerHTML = `
+        <div class="flex items-end gap-1 sm:gap-1.5 h-32 w-full">
+          ${rows.map(row => {
+            const val = row.counts[state.miniChartDay] || 0;
+            const heightPct = Math.max(Math.round((val / safeMax) * 100), val > 0 ? 6 : 2);
+            const isSelected = state.selectedSlot.day === state.miniChartDay && state.selectedSlot.startMin === row.startMin;
+            const barColor = isSelected
+              ? 'bg-slate-900'
+              : val >= safeMax * 0.85
+                ? 'bg-indigo-600 hover:bg-indigo-700'
+                : 'bg-indigo-300 hover:bg-indigo-500';
+            return `
+              <div onclick="selectSlot('${state.miniChartDay}', ${row.startMin})" class="flex-1 flex flex-col items-center justify-end h-full group cursor-pointer" title="${state.miniChartDay} ${row.label}: ${val} sections">
+                <span class="text-[9px] font-mono font-semibold text-slate-600 mb-1 opacity-80 group-hover:opacity-100">${val}</span>
+                <div class="bar-fill w-full rounded-t-md ${barColor}" style="height: ${heightPct}%"></div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+        <div class="flex items-center gap-1 sm:gap-1.5 mt-1.5 border-t border-slate-200 pt-1">
+          ${rows.map((row, idx) => {
+            const shortLabel = idx % 2 === 0 ? row.label.replace(':00 ', '').toLowerCase() : '';
+            return `<div class="flex-1 text-center text-[9px] font-mono text-slate-400 truncate">${shortLabel}</div>`;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    function renderSlotInspector(filteredSections = getFilteredSections()) {
+      const { day, startMin } = state.selectedSlot;
+      const endMin = startMin + 30;
+      const startLabel = formatMinutesToTime(startMin);
+      const endLabel = formatMinutesToTime(endMin);
+
+      let activeSections = getSectionsInSlot(filteredSections, day, startMin);
+      const searchQuery = (document.getElementById('inspector-search')?.value || '').trim().toLowerCase();
+
+      const totalEnrl = activeSections.reduce((sum, s) => sum + s.enrollment, 0);
+
+      if (searchQuery) {
+        activeSections = activeSections.filter(s =>
+          s.code.toLowerCase().includes(searchQuery) ||
+          s.title.toLowerCase().includes(searchQuery) ||
+          s.division.toLowerCase().includes(searchQuery) ||
+          s.instructor.toLowerCase().includes(searchQuery) ||
+          s.location.toLowerCase().includes(searchQuery)
+        );
+      }
+
+      activeSections.sort((a, b) => a.code.localeCompare(b.code));
+
+      document.getElementById('inspector-heading').textContent = `${day} · ${startLabel}`;
+      document.getElementById('inspector-section-count').textContent =
+        `${activeSections.length} section${activeSections.length === 1 ? '' : 's'}`;
+      document.getElementById('inspector-window-label').textContent = `Window: ${startLabel} – ${endLabel}`;
+      document.getElementById('inspector-enrollment-sum').textContent = `${totalEnrl.toLocaleString()} seats`;
+
+      const listEl = document.getElementById('inspector-sections-list');
+      if (activeSections.length === 0) {
+        listEl.innerHTML = `
+          <div class="py-12 text-center">
+            <p class="text-xs font-semibold text-slate-700">No sections in session</p>
+            <p class="text-[11px] text-slate-400 mt-1">Select another cell in the matrix or clear active filters.</p>
+          </div>
+        `;
+        return;
+      }
+
+      listEl.innerHTML = activeSections.map(sec => {
+        const badgeCls = FORMAT_BADGE_STYLES[sec.format] || 'bg-slate-100 text-slate-700 border-slate-200';
+        const divBadgeCls = DIVISION_BADGE_STYLES[sec.division] || 'bg-slate-100 text-slate-700 border-slate-200';
+        return `
+          <div class="py-3 first:pt-0 last:pb-0">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span class="font-mono text-xs font-bold text-brand-700">${escapeHtml(sec.code)}</span>
+                  <span class="px-1.5 py-0.2 rounded-md text-[9px] font-mono font-semibold bg-purple-50 text-purple-800 border border-purple-200">
+                    ${sec.level}-Lvl
+                  </span>
+                  <span class="px-1.5 py-0.2 rounded-md text-[9px] font-semibold border ${divBadgeCls}">
+                    ${escapeHtml(sec.division)}
+                  </span>
+                </div>
+                <h4 class="text-xs font-semibold text-slate-900 mt-1 leading-snug">${escapeHtml(sec.title)}</h4>
+              </div>
+              <span class="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${badgeCls}">
+                ${escapeHtml(sec.format)}
+              </span>
+            </div>
+            <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+              <span class="font-mono text-slate-700">${escapeHtml(sec.timeStr)} (${escapeHtml(sec.dayChars)})</span>
+              <span>Enrl: <strong class="text-slate-700">${sec.enrollment}</strong></span>
+            </div>
+            ${sec.location ? `<p class="text-[11px] text-slate-500 mt-0.5 truncate" title="${escapeHtml(sec.location)}">Loc: ${escapeHtml(sec.location)}</p>` : ''}
+            ${sec.instructor ? `<p class="text-[11px] text-slate-400 mt-0.5 truncate" title="${escapeHtml(sec.instructor)}">Inst: ${escapeHtml(sec.instructor)}</p>` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    /**
+     * =========================================================================
+     * VIEW 2: INTERACTIVE CHART & TRENDS RENDERER
+     * =========================================================================
+     */
+    function renderTrendsView(filteredSections, matrixData) {
+      const { rows, days, maxCount, peakInfo } = matrixData;
+
+      // KPIs
+      const totalSeats = filteredSections.reduce((sum, s) => sum + s.enrollment, 0);
+      let totalCellSum = 0;
+      let totalCells = 0;
+      const dayTotals = {};
+
+      days.forEach(d => { dayTotals[d] = 0; });
+      rows.forEach(r => {
+        days.forEach(d => {
+          const c = r.counts[d] || 0;
+          totalCellSum += c;
+          totalCells += 1;
+          dayTotals[d] += c;
+        });
+      });
+
+      let busiestDay = '—';
+      let busiestDayBlocks = 0;
+      Object.entries(dayTotals).forEach(([d, sum]) => {
+        if (sum > busiestDayBlocks) {
+          busiestDayBlocks = sum;
+          busiestDay = d;
+        }
+      });
+
+      document.getElementById('trend-kpi-peak').textContent = maxCount;
+      document.getElementById('trend-kpi-peak-sub').textContent =
+        maxCount > 0 ? `${peakInfo.day} at ${peakInfo.timeLabel}` : 'No active meetings';
+      document.getElementById('trend-kpi-sections').textContent = filteredSections.length;
+      document.getElementById('trend-kpi-enrollment').textContent = `${totalSeats.toLocaleString()} total enrolled seats`;
+      document.getElementById('trend-kpi-day').textContent = busiestDay;
+      document.getElementById('trend-kpi-day-sub').textContent = `${busiestDayBlocks} half-hour section blocks`;
+      document.getElementById('trend-kpi-mean').textContent =
+        totalCells > 0 ? (totalCellSum / totalCells).toFixed(1) : '0.0';
+
+      // Multi-Day SVG Line Chart (Monday - Friday)
+      const svgContainer = document.getElementById('multi-day-svg-container');
+      const W = 900;
+      const H = 290;
+      const padL = 44;
+      const padR = 24;
+      const padT = 20;
+      const padB = 42;
+      const plotW = W - padL - padR;
+      const plotH = H - padT - padB;
+      const yMax = Math.max(maxCount, 10);
+
+      const dayColors = {
+        Monday: '#4f46e5',
+        Tuesday: '#059669',
+        Wednesday: '#f59e0b',
+        Thursday: '#e11d48',
+        Friday: '#0ea5e9'
+      };
+
+      const yTicks = 5;
+      let gridHtml = '';
+      for (let i = 0; i <= yTicks; i++) {
+        const val = Math.round((yMax / yTicks) * i);
+        const y = padT + plotH - (val / yMax) * plotH;
+        gridHtml += `
+          <line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="#e2e8f0" stroke-dasharray="3,3" />
+          <text x="${padL - 8}" y="${y + 4}" text-anchor="end" fill="#64748b" font-size="11" font-family="JetBrains Mono, monospace">${val}</text>
+        `;
+      }
+
+      let xLabelsHtml = '';
+      rows.forEach((r, idx) => {
+        const x = padL + (rows.length > 1 ? (idx / (rows.length - 1)) * plotW : plotW / 2);
+        if (idx % 2 === 0 || rows.length <= 12) {
+          xLabelsHtml += `
+            <text x="${x}" y="${H - 12}" text-anchor="middle" fill="#64748b" font-size="10" font-family="JetBrains Mono, monospace">${r.label.replace(':00 ', '').toLowerCase()}</text>
+          `;
+        }
+      });
+
+      let linesHtml = '';
+      WEEKDAYS.forEach(day => {
+        const color = dayColors[day];
+        const pts = rows.map((r, idx) => {
+          const x = padL + (rows.length > 1 ? (idx / (rows.length - 1)) * plotW : plotW / 2);
+          const val = r.counts[day] || 0;
+          const y = padT + plotH - (val / yMax) * plotH;
+          return `${x.toFixed(1)},${y.toFixed(1)}`;
+        }).join(' ');
+
+        const circles = rows.map((r, idx) => {
+          const x = padL + (rows.length > 1 ? (idx / (rows.length - 1)) * plotW : plotW / 2);
+          const val = r.counts[day] || 0;
+          const y = padT + plotH - (val / yMax) * plotH;
+          return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="${color}" stroke="#ffffff" stroke-width="1.5"><title>${day} ${r.label}: ${val} sections</title></circle>`;
+        }).join('');
+
+        linesHtml += `<polyline fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="${pts}" />${circles}`;
+      });
+
+      svgContainer.innerHTML = `
+        <svg viewBox="0 0 ${W} ${H}" class="w-full min-w-[640px] h-auto">
+          ${gridHtml}
+          ${xLabelsHtml}
+          ${linesHtml}
+        </svg>
+      `;
+
+      // Academic Division Breakdown
+      const totalSecs = Math.max(filteredSections.length, 1);
+      document.getElementById('division-breakdown-container').innerHTML = DIVISION_ORDER.map(divName => {
+        const secs = filteredSections.filter(s => matchesDivision(s, divName));
+        const count = secs.length;
+        const seats = secs.reduce((acc, s) => acc + s.enrollment, 0);
+        const pct = ((count / totalSecs) * 100).toFixed(1);
+        const barColor = DIVISION_BAR_COLORS[divName] || 'bg-slate-600';
+
+        return `
+          <div>
+            <div class="flex items-center justify-between text-xs mb-1">
+              <span class="font-semibold text-slate-800">${escapeHtml(divName)}</span>
+              <span class="font-mono text-slate-600">${count} (${pct}%) · ${seats.toLocaleString()} seats</span>
+            </div>
+            <div class="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+              <div class="h-full ${barColor} rounded-full" style="width: ${pct}%"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Enrollment Size Breakdown (Increments of 10)
+      const sizeBuckets = getEnrollmentSizeBuckets(state.sections);
+      const sizeColors = [
+        'bg-emerald-500',
+        'bg-teal-500',
+        'bg-cyan-600',
+        'bg-sky-600',
+        'bg-indigo-600',
+        'bg-violet-600',
+        'bg-purple-600',
+        'bg-fuchsia-600',
+        'bg-rose-600',
+        'bg-amber-600'
+      ];
+      document.getElementById('size-breakdown-container').innerHTML = sizeBuckets.map((b, i) => {
+        const secs = filteredSections.filter(s => matchesEnrollmentSize(s, b.id));
+        const count = secs.length;
+        const seats = secs.reduce((acc, s) => acc + s.enrollment, 0);
+        const pct = ((count / totalSecs) * 100).toFixed(1);
+        const color = sizeColors[i % sizeColors.length];
+        const isSelected = state.filters.size === b.id;
+
+        return `
+          <div onclick="filterByEnrollmentSize('${b.id}')" title="Click to filter report to ${b.label}" class="group cursor-pointer rounded-lg p-1 -mx-1 hover:bg-slate-50 transition">
+            <div class="flex items-center justify-between text-xs mb-1">
+              <span class="font-semibold ${isSelected ? 'text-brand-700 underline' : 'text-slate-800 group-hover:text-brand-700'}">${b.label}</span>
+              <span class="font-mono text-slate-600">${count} (${pct}%) · ${seats.toLocaleString()} seats</span>
+            </div>
+            <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div class="h-full ${color} rounded-full transition-all" style="width: ${pct}%"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Course Level Breakdown (100, 200, 300, 400)
+      const levelColors = {
+        100: 'bg-purple-500',
+        200: 'bg-purple-600',
+        300: 'bg-purple-800',
+        400: 'bg-purple-950'
+      };
+      const activeLvls = getActiveCourseLevelsSorted();
+      document.getElementById('level-breakdown-container').innerHTML = COURSE_LEVELS.map(lvl => {
+        const secs = filteredSections.filter(s => sectionHasSpecificLevel(s, lvl));
+        const count = secs.length;
+        const seats = secs.reduce((acc, s) => acc + s.enrollment, 0);
+        const pct = ((count / totalSecs) * 100).toFixed(1);
+        const isSelected = activeLvls.includes(lvl);
+
+        return `
+          <div onclick="toggleCourseLevel(${lvl}, true)" title="Click to toggle ${lvl}-level filter" class="group cursor-pointer rounded-lg p-1 -mx-1 hover:bg-slate-50 transition">
+            <div class="flex items-center justify-between text-xs mb-1">
+              <span class="font-semibold ${isSelected ? 'text-purple-900 underline' : 'text-slate-800 group-hover:text-purple-900'}">${lvl} Level</span>
+              <span class="font-mono text-slate-600">${count} (${pct}%) · ${seats.toLocaleString()} seats</span>
+            </div>
+            <div class="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+              <div class="h-full ${levelColors[lvl] || 'bg-purple-700'} rounded-full transition-all" style="width: ${pct}%"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Format Breakdown
+      const formatGroups = ['Lecture', 'Laboratory', 'Discussion'];
+      const formatColors = {
+        Lecture: 'bg-indigo-600',
+        Laboratory: 'bg-emerald-600',
+        Discussion: 'bg-amber-500'
+      };
+
+      document.getElementById('format-breakdown-container').innerHTML = formatGroups.map(fmt => {
+        const secs = filteredSections.filter(s => s.format === fmt);
+        const count = secs.length;
+        const seats = secs.reduce((acc, s) => acc + s.enrollment, 0);
+        const pct = ((count / totalSecs) * 100).toFixed(1);
+
+        return `
+          <div>
+            <div class="flex items-center justify-between text-xs mb-1.5">
+              <span class="font-semibold text-slate-800">${fmt}</span>
+              <span class="font-mono text-slate-600">${count} sections (${pct}%) · ${seats.toLocaleString()} seats</span>
+            </div>
+            <div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+              <div class="h-full ${formatColors[fmt] || 'bg-slate-600'} rounded-full" style="width: ${pct}%"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Top 10 Subjects by Half-Hour Meeting Blocks
+      const deptBlockMap = {};
+      filteredSections.forEach(sec => {
+        const slotsPerMeeting = Math.max(1, Math.ceil((sec.endMin - sec.startMin) / 30));
+        const weeklyBlocks = slotsPerMeeting * sec.days.length;
+        deptBlockMap[sec.dept] = (deptBlockMap[sec.dept] || 0) + weeklyBlocks;
+      });
+
+      const topDepts = Object.entries(deptBlockMap)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+      const maxDeptBlocks = topDepts.length > 0 ? topDepts[0][1] : 1;
+
+      document.getElementById('dept-breakdown-container').innerHTML = topDepts.map(([dept, blocks]) => {
+        const pct = Math.round((blocks / maxDeptBlocks) * 100);
+        return `
+          <div class="flex items-center gap-3 text-xs">
+            <span class="w-12 font-mono font-bold text-slate-700">${escapeHtml(dept)}</span>
+            <div class="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden">
+              <div class="h-full bg-brand-600 rounded-full" style="width: ${pct}%"></div>
+            </div>
+            <span class="w-20 text-right font-mono text-slate-600">${blocks} blocks</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    /**
+     * =========================================================================
+     * VIEW 3: SECTION DIRECTORY RENDERER
+     * =========================================================================
+     */
+    function renderDirectoryTable(filteredSections = getFilteredSections()) {
+      const q = (document.getElementById('directory-search')?.value || '').trim().toLowerCase();
+      let list = [...filteredSections];
+
+      if (q) {
+        list = list.filter(s =>
+          s.code.toLowerCase().includes(q) ||
+          s.division.toLowerCase().includes(q) ||
+          s.title.toLowerCase().includes(q) ||
+          s.instructor.toLowerCase().includes(q) ||
+          s.location.toLowerCase().includes(q) ||
+          s.dept.toLowerCase().includes(q)
+        );
+      }
+
+      const { key, dir } = state.directorySort;
+      list.sort((a, b) => {
+        let va = key === 'daysStr' ? a.dayChars : a[key];
+        let vb = key === 'daysStr' ? b.dayChars : b[key];
+        if (typeof va === 'number' && typeof vb === 'number') {
+          return dir === 'asc' ? va - vb : vb - va;
+        }
+        return dir === 'asc'
+          ? String(va || '').localeCompare(String(vb || ''))
+          : String(vb || '').localeCompare(String(va || ''));
+      });
+
+      document.getElementById('directory-subtitle').textContent =
+        `Showing ${list.length} of ${filteredSections.length} active sections (${state.period})`;
+
+      ['code', 'division', 'title', 'format', 'daysStr', 'startMin', 'location', 'instructor', 'enrollment'].forEach(col => {
+        const el = document.getElementById(`sort-ind-${col}`);
+        if (el) {
+          el.textContent = col === key ? (dir === 'asc' ? '▲' : '▼') : '';
+        }
+      });
+
+      const tbody = document.getElementById('directory-tbody');
+      tbody.innerHTML = list.map(sec => {
+        const badgeCls = FORMAT_BADGE_STYLES[sec.format] || 'bg-slate-100 text-slate-700 border-slate-200';
+        const divBadgeCls = DIVISION_BADGE_STYLES[sec.division] || 'bg-slate-100 text-slate-700 border-slate-200';
+        return `
+          <tr class="hover:bg-slate-50 transition">
+            <td class="py-2.5 px-4 font-mono font-bold text-brand-700 whitespace-nowrap">
+              <span>${escapeHtml(sec.code)}</span>
+              <span class="ml-1.5 px-1.5 py-0.2 rounded-md text-[9px] font-semibold bg-purple-50 text-purple-800 border border-purple-200">${sec.level}</span>
+            </td>
+            <td class="py-2.5 px-4 whitespace-nowrap">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold border ${divBadgeCls}">
+                ${escapeHtml(sec.division)}
+              </span>
+            </td>
+            <td class="py-2.5 px-4 font-medium text-slate-900">${escapeHtml(sec.title)}</td>
+            <td class="py-2.5 px-4">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold border ${badgeCls}">
+                ${escapeHtml(sec.format)}
+              </span>
+            </td>
+            <td class="py-2.5 px-4 font-mono font-semibold text-slate-700">${escapeHtml(sec.dayChars)}</td>
+            <td class="py-2.5 px-4 font-mono text-slate-600 whitespace-nowrap">${escapeHtml(sec.timeStr)}</td>
+            <td class="py-2.5 px-4 text-slate-600">${escapeHtml(sec.location || '—')}</td>
+            <td class="py-2.5 px-4 text-slate-600">${escapeHtml(sec.instructor || '—')}</td>
+            <td class="py-2.5 px-4 text-right font-mono font-semibold text-slate-800">${sec.enrollment}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    /**
+     * =========================================================================
+     * EXCEL (.XLSX / .XLS) & CSV PARSER (SHEETJS)
+     * =========================================================================
+     */
+    function parseTimeRangeString(timeStr) {
+      const parts = String(timeStr || '').split('-').map(p => p.trim());
+      if (parts.length !== 2) return null;
+      const startMin = parseSingleTimeToMin(parts[0]);
+      const endMin = parseSingleTimeToMin(parts[1]);
+      if (startMin === null || endMin === null || endMin <= startMin) return null;
+      return { startMin, endMin };
+    }
+
+    function parseSingleTimeToMin(tStr) {
+      const m = String(tStr).trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+      if (!m) return null;
+      let h = parseInt(m[1], 10);
+      const min = parseInt(m[2], 10);
+      const mer = (m[3] || '').toUpperCase();
+      if (mer === 'PM' && h !== 12) h += 12;
+      if (mer === 'AM' && h === 12) h = 0;
+      return h * 60 + min;
+    }
+
+    async function handleSpreadsheetUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      try {
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rawRows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+
+        if (!rawRows || rawRows.length === 0) {
+          showToast('Uploaded file appears to be empty.', 'error');
+          return;
+        }
+
+        let detectedPeriod = file.name.replace(/\.[^/.]+$/, '');
+        const parsedSections = [];
+
+        rawRows.forEach((row, idx) => {
+          const period = row['Academic Period'] || row['Term'] || '';
+          if (period && idx === 0) detectedPeriod = String(period).trim();
+
+          const defRaw = String(row['Course Section Definition'] || row['Course'] || row['Section'] || '').trim();
+          const daysRaw = String(row['Days'] || row['Meeting Days'] || '').trim();
+          const timeRaw = String(row['Tme'] || row['Time'] || row['Meeting Time'] || '').trim();
+          const formatRaw = String(row['Instructional Format'] || row['Format'] || 'Lecture').trim();
+          const locationRaw = String(row['Locations'] || row['Location'] || row['Room'] || '').trim();
+          const instructorRaw = String(row['Instructors'] || row['Instructor'] || '').replace(/\n+/g, ', ').trim();
+          const enrollmentRaw = parseInt(row['Enrollment'] || row['Enrolled'] || 0, 10) || 0;
+
+          if (!defRaw || !daysRaw || !timeRaw) return;
+
+          const parsedTime = parseTimeRangeString(timeRaw);
+          if (!parsedTime) return;
+
+          let code = defRaw;
+          let title = '';
+          const splitIdx = defRaw.indexOf(' - ');
+          if (splitIdx !== -1) {
+            code = defRaw.slice(0, splitIdx).trim();
+            title = defRaw.slice(splitIdx + 3).trim();
+          }
+
+          const depts = Array.from(new Set(
+            code.split('/').map(p => {
+              const m = p.trim().match(/^([A-Z]+)/);
+              return m ? m[1] : null;
+            }).filter(Boolean)
+          ));
+
+          const primaryDept = depts[0] || 'OTHER';
+          const primaryDivision = getDivisionForSubject(primaryDept);
+          const divisions = Array.from(new Set((depts.length > 0 ? depts : [primaryDept]).map(getDivisionForSubject)));
+          const { level, levels } = parseCourseLevels(code);
+
+          const dayChars = daysRaw.replace(/[^MTWRFSU]/gi, '').toUpperCase();
+          const days = dayChars.split('').map(ch => DAY_CODE_MAP[ch]).filter(Boolean);
+          if (days.length === 0) return;
+
+          parsedSections.push({
+            id: `up_${idx}`,
+            code,
+            dept: primaryDept,
+            depts: depts.length > 0 ? depts : ['OTHER'],
+            division: primaryDivision,
+            divisions,
+            level,
+            levels,
+            title: title || code,
+            instructor: instructorRaw,
+            enrollment: enrollmentRaw,
+            format: formatRaw || 'Lecture',
+            location: locationRaw,
+            dayChars,
+            days,
+            timeStr: timeRaw,
+            startMin: parsedTime.startMin,
+            endMin: parsedTime.endMin
+          });
+        });
+
+        if (parsedSections.length === 0) {
+          showToast('No valid scheduled sections found. Check column headers (Course Section Definition, Days, Tme/Time).', 'error');
+          return;
+        }
+
+        state.period = detectedPeriod;
+        state.sections = parsedSections;
+        state.isCustomDataset = true;
+        resetAllFilters();
+        document.getElementById('btn-reset-dataset').classList.remove('hidden');
+        showToast(`Loaded ${parsedSections.length} sections from "${file.name}".`, 'success');
+      } catch (err) {
+        console.error(err);
+        showToast('Failed to parse file. Please upload a valid .xlsx, .xls, or .csv file.', 'error');
+      } finally {
+        event.target.value = '';
+      }
+    }
+
+    function restoreFall2026Dataset() {
+      state.period = FALL_2026_DATA.period;
+      state.sections = hydrateCompressedDataset(FALL_2026_DATA);
+      state.isCustomDataset = false;
+      state.selectedSlot = { day: 'Wednesday', startMin: 13 * 60 + 30 };
+      state.miniChartDay = 'Wednesday';
+      document.getElementById('btn-reset-dataset').classList.add('hidden');
+      resetAllFilters();
+      showToast('Restored Fall 2026 schedule (564 sections).', 'info');
+    }
+
+    /**
+     * =========================================================================
+     * CSV REPORT EXPORT
+     * =========================================================================
+     */
+    function exportReportCsv() {
+      const filtered = getFilteredSections();
+      const { rows, days } = computeScheduleMatrix(filtered);
+
+      const tags = [];
+      if (state.filters.division !== 'ALL') tags.push(state.filters.division);
+      if (state.filters.dept !== 'ALL') tags.push(state.filters.dept);
+      const activeLevels = getActiveCourseLevelsSorted();
+      if (activeLevels.length > 0) tags.push(`Level: ${activeLevels.join(', ')}`);
+      if (state.filters.size !== 'ALL') tags.push(`Enrollment: ${getEnrollmentSizeLabel(state.filters.size)}`);
+      if (state.filters.format !== 'ALL') tags.push(state.filters.format);
+      const filterTag = tags.length > 0 ? ` - ${tags.join(' - ')}` : '';
+
+      const lines = [
+        `"Sections* in Session by Time"`,
+        `"${state.period} schedule (${filtered.length} sections${filterTag})"`,
+        ['Time:', ...days].map(v => `"${v}"`).join(',')
+      ];
+
+      rows.forEach(r => {
+        lines.push([`"${r.label}"`, ...days.map(d => r.counts[d] || 0)].join(','));
+      });
+
+      lines.push(`"* Includes all scheduled academic meetings, including labs, studios, and discussions"`);
+
+      const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Sections in Session by Time - ${state.period}${filterTag}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Exported CSV summary report.', 'success');
+    }
+
+    /**
+     * =========================================================================
+     * INTERACTION HANDLERS
+     * =========================================================================
+     */
+    function switchView(view) {
+      state.currentView = view;
+      ['report', 'trends', 'directory'].forEach(v => {
+        const viewEl = document.getElementById(`view-${v}`);
+        const tabEl = document.getElementById(`tab-${v}`);
+        const active = v === view;
+        viewEl.classList.toggle('hidden', !active);
+        tabEl.className = active
+          ? 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-900 shadow-xs transition'
+          : 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 transition';
+      });
+      renderAll();
+    }
+
+    function handleDivisionChange() {
+      state.filters.division = document.getElementById('filter-division').value;
+      state.filters.dept = 'ALL'; // Reset subject dropdown when division changes
+      renderAll();
+    }
+
+    function setMatchMode(mode) {
+      state.matchMode = mode;
+      renderAll();
+    }
+
+    function setFormatFilter(fmt) {
+      state.filters.format = fmt;
+      renderAll();
+    }
+
+    function handleFilterChange() {
+      state.filters.division = document.getElementById('filter-division').value;
+      state.filters.dept = document.getElementById('filter-dept').value;
+      state.filters.size = document.getElementById('filter-size').value;
+      state.filters.location = document.getElementById('filter-loc').value;
+      renderAll();
+    }
+
+    function filterByEnrollmentSize(sizeId) {
+      state.filters.size = state.filters.size === sizeId ? 'ALL' : sizeId;
+      switchView('report');
+      renderAll();
+      if (state.filters.size !== 'ALL') {
+        showToast(`Filtered report to ${getEnrollmentSizeLabel(state.filters.size)}`, 'info');
+      }
+    }
+
+    function toggleCourseLevel(lvl, jumpToReport = false) {
+      const current = new Set(state.filters.levels || []);
+      if (current.has(lvl)) {
+        current.delete(lvl);
+      } else {
+        current.add(lvl);
+      }
+      // If all 4 are checked, normalize back to [] (All Levels)
+      if (current.size >= COURSE_LEVELS.length) {
+        state.filters.levels = [];
+      } else {
+        state.filters.levels = Array.from(current).sort((a, b) => a - b);
+      }
+      if (jumpToReport) {
+        switchView('report');
+      }
+      renderAll();
+    }
+
+    function clearCourseLevels() {
+      state.filters.levels = [];
+      renderAll();
+    }
+
+    function resetAllFilters() {
+      state.filters.division = 'ALL';
+      state.filters.format = 'ALL';
+      state.filters.dept = 'ALL';
+      state.filters.levels = [];
+      state.filters.size = 'ALL';
+      state.filters.location = 'ALL';
+      renderAll();
+    }
+
+    function setTimeWindow(win) {
+      state.timeWindow = win;
+      renderAll();
+    }
+
+    function toggleSunday() {
+      state.includeSunday = document.getElementById('toggle-sunday').checked;
+      renderAll();
+    }
+
+    function toggleHeatmapShading() {
+      state.heatmapShading = document.getElementById('toggle-shading').checked;
+      renderAll();
+    }
+
+    function selectSlot(day, startMin) {
+      state.selectedSlot = { day, startMin };
+      if (WEEKDAYS.includes(day) || day === 'Sunday') {
+        state.miniChartDay = day;
+      }
+      renderAll();
+    }
+
+    function setMiniChartDay(day) {
+      state.miniChartDay = day;
+      renderAll();
+    }
+
+    function sortDirectory(key) {
+      if (state.directorySort.key === key) {
+        state.directorySort.dir = state.directorySort.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.directorySort.key = key;
+        state.directorySort.dir = 'asc';
+      }
+      renderDirectoryTable();
+    }
+
+    function escapeHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      const colors = {
+        success: 'bg-slate-900 text-white border-slate-800',
+        error: 'bg-rose-600 text-white border-rose-700',
+        info: 'bg-slate-800 text-white border-slate-700'
+      };
+      toast.className = `pointer-events-auto px-4 py-2.5 rounded-xl text-xs font-semibold shadow-lg border transition-all duration-200 ${colors[type] || colors.info}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 220);
+      }, 3200);
+    }
+
+    // Boot Application
+    window.addEventListener('DOMContentLoaded', () => {
+      state.sections = hydrateCompressedDataset(FALL_2026_DATA);
+      renderAll();
+    });
+  </script>
+</body>
+</html>
